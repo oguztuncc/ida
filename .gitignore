@@ -1,4 +1,9 @@
 build/
 install/
 log/
-.vscode/
+__pycache__/
+*.pyc
+records/
+*.mp4
+*.csv
+*.bag

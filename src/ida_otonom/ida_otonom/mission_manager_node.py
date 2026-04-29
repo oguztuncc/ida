@@ -12,8 +12,10 @@ class MissionManagerNode(Node):
     def __init__(self) -> None:
         super().__init__("mission_manager_node")
 
-        self.declare_parameter("mission_file", "/home/jetson/missions/mission.json")
-
+        self.declare_parameter(
+            "mission_file",
+            "/home/talay/Documents/ida/src/ida_otonom/ida_otonom/missions/mission.json"
+        )
         self.mission_file = self.get_parameter("mission_file").value
         self.active_waypoint_index = 0
         self.mission_loaded = False

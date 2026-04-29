@@ -13,7 +13,7 @@ class GpsGuidanceNode(Node):
     def __init__(self) -> None:
         super().__init__("gps_guidance_node")
 
-        self.declare_parameter("mission_file", "/home/jetson/missions/mission.json")
+        self.declare_parameter("mission_file", "/home/talay/Documents/ida/src/ida_otonom/ida_otonom/missions/mission.json")
         self.declare_parameter("arrival_radius_m", 3.0)
 
         self.mission_file = self.get_parameter("mission_file").value

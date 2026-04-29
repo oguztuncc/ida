@@ -14,7 +14,7 @@ class PerceptionNode(Node):
         super().__init__("perception_node")
 
         self.declare_parameter("camera_index", 0)
-        self.declare_parameter("save_dir", "/home/jetson/records")
+        self.declare_parameter("save_dir", "/home/talay/records")
 
         self.camera_index = int(self.get_parameter("camera_index").value)
         self.save_dir = str(self.get_parameter("save_dir").value)

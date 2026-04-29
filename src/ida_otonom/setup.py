@@ -9,10 +9,11 @@ setup(
     version='0.1.0',
     packages=[package_name],
     data_files=[
-        ('share/ament_index/resource_index/packages', ['resource/' + package_name]),
-        ('share/' + package_name, ['package.xml']),
-        (os.path.join('share', package_name, 'missions'), glob('ida_otonom/missions/*.json')),
-    ],
+    ('share/ament_index/resource_index/packages', ['resource/' + package_name]),
+    ('share/' + package_name, ['package.xml']),
+    (os.path.join('share', package_name, 'missions'), glob('ida_otonom/missions/*.json')),
+    (os.path.join('share', package_name, 'launch'), glob('launch/*.launch.py')),
+],
     install_requires=['setuptools'],
     zip_safe=True,
     maintainer='team',
@@ -22,6 +23,7 @@ setup(
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
+            'sim_gps_node = ida_otonom.sim_gps_node:main',
             'mission_manager_node = ida_otonom.mission_manager_node:main',
             'gps_guidance_node = ida_otonom.gps_guidance_node:main',
             'controller_node = ida_otonom.controller_node:main',

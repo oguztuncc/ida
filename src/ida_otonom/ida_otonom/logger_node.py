@@ -14,7 +14,7 @@ class LoggerNode(Node):
     def __init__(self) -> None:
         super().__init__("logger_node")
 
-        self.declare_parameter("log_dir", "/home/jetson/records")
+        self.declare_parameter("log_dir", "/home/talay/records")
         self.log_dir = str(self.get_parameter("log_dir").value)
         os.makedirs(self.log_dir, exist_ok=True)
 
