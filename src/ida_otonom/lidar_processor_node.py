@@ -16,14 +16,30 @@ class LidarProcessorNode(Node):
         self.declare_parameter("collision_distance_m", 1.2)
         self.declare_parameter("sector_width_deg", 30.0)
 
-        self.collision_distance_m = float(self.get_parameter("collision_distance_m").value)
-        self.sector_width_deg = float(self.get_parameter("sector_width_deg").value)
+        self.collision_distance_m = float(
+            self.get_parameter("collision_distance_m").value
+        )
+        self.sector_width_deg = float(
+            self.get_parameter("sector_width_deg").value
+        )
 
         self.create_subscription(LaserScan, "/scan", self.scan_cb, 10)
-        self.pub = self.create_publisher(String, "/perception/lidar_summary", 10)
+        self.pub = self.create_publisher(
+            String,
+            "/perception/lidar_summary",
+            10,
+        )
 
-    def _sector_min(self, ranges: List[float], start_idx: int, end_idx: int) -> float:
-        vals = [r for r in ranges[start_idx:end_idx] if math.isfinite(r) and r > 0.05]
+    def _sector_min(
+        self,
+        ranges: List[float],
+        start_idx: int,
+        end_idx: int,
+    ) -> float:
+        vals = [
+            r for r in ranges[start_idx:end_idx]
+            if math.isfinite(r) and r > 0.05
+        ]
         return min(vals) if vals else 999.0
 
     def scan_cb(self, msg: LaserScan) -> None:
@@ -32,12 +48,27 @@ class LidarProcessorNode(Node):
             return
 
         deg_per_sample = math.degrees(msg.angle_increment)
-        sector_samples = max(1, int(self.sector_width_deg / max(deg_per_sample, 1e-6)))
+        sector_samples = max(
+            1,
+            int(self.sector_width_deg / max(deg_per_sample, 1e-6)),
+        )
 
         center = n // 2
-        front_min = self._sector_min(msg.ranges, max(0, center - sector_samples // 2), min(n, center + sector_samples // 2))
-        left_min = self._sector_min(msg.ranges, min(n - 1, center + sector_samples), min(n, center + 2 * sector_samples))
-        right_min = self._sector_min(msg.ranges, max(0, center - 2 * sector_samples), max(1, center - sector_samples))
+        front_min = self._sector_min(
+            msg.ranges,
+            max(0, center - sector_samples // 2),
+            min(n, center + sector_samples // 2),
+        )
+        left_min = self._sector_min(
+            msg.ranges,
+            min(n - 1, center + sector_samples),
+            min(n, center + 2 * sector_samples),
+        )
+        right_min = self._sector_min(
+            msg.ranges,
+            max(0, center - 2 * sector_samples),
+            max(1, center - sector_samples),
+        )
 
         collision = front_min < self.collision_distance_m
 

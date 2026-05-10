@@ -15,11 +15,29 @@ class SensorFusionNode(Node):
         self.latest_detections: Optional[Dict] = None
         self.latest_lidar: Optional[Dict] = None
 
-        self.create_subscription(String, "/perception/detections", self.det_cb, 10)
-        self.create_subscription(String, "/perception/lidar_summary", self.lidar_cb, 10)
+        self.create_subscription(
+            String,
+            "/perception/detections",
+            self.det_cb,
+            10,
+        )
+        self.create_subscription(
+            String,
+            "/perception/lidar_summary",
+            self.lidar_cb,
+            10,
+        )
 
-        self.gate_pub = self.create_publisher(String, "/fusion/gate_candidate", 10)
-        self.world_pub = self.create_publisher(String, "/fusion/world_state", 10)
+        self.gate_pub = self.create_publisher(
+            String,
+            "/fusion/gate_candidate",
+            10,
+        )
+        self.world_pub = self.create_publisher(
+            String,
+            "/fusion/world_state",
+            10,
+        )
 
         self.timer = self.create_timer(0.1, self.loop)
 
@@ -36,7 +54,10 @@ class SensorFusionNode(Node):
         detections = self.latest_detections.get("detections", [])
 
         # Burada class_name == "parkur_duba" gibi ortak isim standardı kullan
-        buoy_boxes = [d for d in detections if d["class_name"] in {"parkur", "duba", "parkur_duba"}]
+        buoy_boxes = [
+            d for d in detections
+            if d["class_name"] in {"parkur", "duba", "parkur_duba"}
+        ]
         buoy_boxes = sorted(buoy_boxes, key=lambda x: x["cx"])
 
         gate_candidate = None

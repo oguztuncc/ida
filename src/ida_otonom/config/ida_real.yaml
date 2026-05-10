@@ -1,0 +1,68 @@
+mission_manager_node:
+  ros__parameters:
+    auto_start: false
+
+gps_guidance_node:
+  ros__parameters:
+    arrival_radius_m: 3.0
+
+controller_node:
+  ros__parameters:
+    kp_heading: 0.02
+    max_linear_speed: 0.35
+    max_angular_speed: 0.6
+
+safety_node:
+  ros__parameters:
+    input_topic: /control/cmd_vel
+    output_topic: /control/cmd_vel_safe
+    latch_kill: true
+
+mavros_bridge_node:
+  ros__parameters:
+    enabled: false
+    output_mode: disabled
+    input_topic: /control/cmd_vel_safe
+    cmd_vel_output_topic: /mavros/setpoint_velocity/cmd_vel_unstamped
+    manual_control_topic: /mavros/manual_control/send
+    command_timeout_s: 0.5
+    publish_rate_hz: 20.0
+    max_linear_speed_mps: 0.35
+    max_yaw_rate_radps: 0.6
+    manual_throttle_neutral: 500
+
+rc_kill_node:
+  ros__parameters:
+    enabled: true
+    channel_number: 7
+    threshold_pwm: 1800
+    active_high: true
+    failsafe_on_missing: true
+    rc_timeout_s: 0.5
+
+power_relay_node:
+  ros__parameters:
+    enabled: false
+    gpio_pin: -1
+    active_low: false
+    initial_motor_power_enabled: false
+
+yki_bridge_node:
+  ros__parameters:
+    udp_ip: 127.0.0.1
+    udp_port: 5005
+    enable_command_rx: true
+    command_bind_ip: 0.0.0.0
+    command_bind_port: 5006
+
+logger_node:
+  ros__parameters:
+    log_dir: /tmp/ida_otonom_logs
+
+local_costmap_node:
+  ros__parameters:
+    log_dir: /tmp/ida_otonom_logs
+    resolution_m: 0.25
+    width_m: 12.0
+    height_m: 12.0
+    publish_rate_hz: 1.0

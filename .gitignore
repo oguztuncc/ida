@@ -1,9 +1,13 @@
 build/
 install/
 log/
+.vscode/
 __pycache__/
-*.pyc
-records/
+*.py[cod]
 *.mp4
 *.csv
+*.avi
+*.mov
 *.bag
+.DS_Store
+records/

@@ -9,11 +9,24 @@ setup(
     version='0.1.0',
     packages=[package_name],
     data_files=[
-    ('share/ament_index/resource_index/packages', ['resource/' + package_name]),
-    ('share/' + package_name, ['package.xml']),
-    (os.path.join('share', package_name, 'missions'), glob('ida_otonom/missions/*.json')),
-    (os.path.join('share', package_name, 'launch'), glob('launch/*.launch.py')),
-],
+        (
+            'share/ament_index/resource_index/packages',
+            ['resource/' + package_name],
+        ),
+        ('share/' + package_name, ['package.xml']),
+        (
+            os.path.join('share', package_name, 'launch'),
+            glob('launch/*.launch.py'),
+        ),
+        (
+            os.path.join('share', package_name, 'config'),
+            glob('config/*.yaml'),
+        ),
+        (
+            os.path.join('share', package_name, 'missions'),
+            glob('ida_otonom/missions/*.json'),
+        ),
+    ],
     install_requires=['setuptools'],
     zip_safe=True,
     maintainer='team',
@@ -23,11 +36,14 @@ setup(
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
-            'sim_gps_node = ida_otonom.sim_gps_node:main',
             'mission_manager_node = ida_otonom.mission_manager_node:main',
+            'sim_gps_node = ida_otonom.sim_gps_node:main',
             'gps_guidance_node = ida_otonom.gps_guidance_node:main',
             'controller_node = ida_otonom.controller_node:main',
             'mavros_bridge_node = ida_otonom.mavros_bridge_node:main',
+            'local_costmap_node = ida_otonom.local_costmap_node:main',
+            'rc_kill_node = ida_otonom.rc_kill_node:main',
+            'power_relay_node = ida_otonom.power_relay_node:main',
             'perception_node = ida_otonom.perception_node:main',
             'logger_node = ida_otonom.logger_node:main',
             'yki_bridge_node = ida_otonom.yki_bridge_node:main',

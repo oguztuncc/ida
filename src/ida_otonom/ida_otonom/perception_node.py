@@ -1,4 +1,5 @@
 import os
+import math
 from datetime import datetime
 
 import cv2
@@ -6,7 +7,7 @@ import rclpy
 from rclpy.node import Node
 from std_msgs.msg import String
 
-from .common import to_json, now_ts
+from .common import default_record_dir, to_json, now_ts
 
 
 class PerceptionNode(Node):
@@ -14,7 +15,7 @@ class PerceptionNode(Node):
         super().__init__("perception_node")
 
         self.declare_parameter("camera_index", 0)
-        self.declare_parameter("save_dir", "/home/talay/records")
+        self.declare_parameter("save_dir", default_record_dir())
 
         self.camera_index = int(self.get_parameter("camera_index").value)
         self.save_dir = str(self.get_parameter("save_dir").value)
@@ -26,7 +27,10 @@ class PerceptionNode(Node):
         self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
 
         stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        self.video_path = os.path.join(self.save_dir, f"camera_processed_{stamp}.mp4")
+        self.video_path = os.path.join(
+            self.save_dir,
+            f"camera_processed_{stamp}.mp4",
+        )
         self.writer = cv2.VideoWriter(
             self.video_path,
             cv2.VideoWriter_fourcc(*"mp4v"),
@@ -34,7 +38,11 @@ class PerceptionNode(Node):
             (640, 480),
         )
 
-        self.hint_pub = self.create_publisher(String, "/perception/corridor_hint", 10)
+        self.hint_pub = self.create_publisher(
+            String,
+            "/perception/corridor_hint",
+            10,
+        )
         self.timer = self.create_timer(0.1, self.loop)
 
     def loop(self) -> None:
@@ -52,7 +60,7 @@ class PerceptionNode(Node):
         lines = cv2.HoughLinesP(
             edges,
             rho=1,
-            theta=cv2.cv2.PI / 180.0,
+            theta=math.pi / 180.0,
             threshold=60,
             minLineLength=40,
             maxLineGap=20,
@@ -76,9 +84,21 @@ class PerceptionNode(Node):
             corridor_center = (max(left_x) + min(right_x)) / 2.0
             pixel_error = corridor_center - image_center_x
             heading_bias_deg = -pixel_error * 0.03
-            cv2.line(frame, (int(corridor_center), 0), (int(corridor_center), h), (255, 0, 0), 2)
+            cv2.line(
+                frame,
+                (int(corridor_center), 0),
+                (int(corridor_center), h),
+                (255, 0, 0),
+                2,
+            )
 
-        cv2.line(frame, (image_center_x, 0), (image_center_x, h), (0, 0, 255), 2)
+        cv2.line(
+            frame,
+            (image_center_x, 0),
+            (image_center_x, h),
+            (0, 0, 255),
+            2,
+        )
         cv2.putText(
             frame,
             f"bias_deg={heading_bias_deg:.2f}",
@@ -99,7 +119,9 @@ class PerceptionNode(Node):
         )
 
         self.writer.write(frame)
-        self.hint_pub.publish(String(data=to_json({"heading_bias_deg": heading_bias_deg})))
+        self.hint_pub.publish(
+            String(data=to_json({"heading_bias_deg": heading_bias_deg}))
+        )
 
     def destroy_node(self):
         try:

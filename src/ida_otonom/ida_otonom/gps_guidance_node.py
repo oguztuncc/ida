@@ -1,51 +1,96 @@
 import json
-from pathlib import Path
 
 import rclpy
 from rclpy.node import Node
 from sensor_msgs.msg import NavSatFix
 from std_msgs.msg import Float32, String, Int32, Bool
 
-from .common import haversine_m, bearing_deg, to_json
+from .common import (
+    bearing_deg,
+    default_mission_file,
+    haversine_m,
+    resolve_mission_file,
+    to_json,
+)
 
 
 class GpsGuidanceNode(Node):
     def __init__(self) -> None:
         super().__init__("gps_guidance_node")
 
-        self.declare_parameter("mission_file", "/home/talay/Documents/ida/src/ida_otonom/ida_otonom/missions/mission.json")
+        self.declare_parameter("mission_file", default_mission_file())
         self.declare_parameter("arrival_radius_m", 3.0)
 
-        self.mission_file = self.get_parameter("mission_file").value
-        self.arrival_radius_m = float(self.get_parameter("arrival_radius_m").value)
+        self.mission_file = str(self.get_parameter("mission_file").value)
+        self.arrival_radius_m = float(
+            self.get_parameter("arrival_radius_m").value
+        )
 
         self.current_lat = None
         self.current_lon = None
         self.current_heading = None
         self.active_waypoint_index = 0
+        self.mission_started = False
         self.waypoints = []
 
-        self.target_bearing_pub = self.create_publisher(Float32, "/guidance/target_bearing_deg", 10)
-        self.target_distance_pub = self.create_publisher(Float32, "/guidance/target_distance_m", 10)
+        self.target_bearing_pub = self.create_publisher(
+            Float32,
+            "/guidance/target_bearing_deg",
+            10,
+        )
+        self.target_distance_pub = self.create_publisher(
+            Float32,
+            "/guidance/target_distance_m",
+            10,
+        )
         self.status_pub = self.create_publisher(String, "/guidance/status", 10)
-        self.advance_pub = self.create_publisher(Bool, "/guidance/advance_waypoint", 10)
+        self.advance_pub = self.create_publisher(
+            Bool,
+            "/guidance/advance_waypoint",
+            10,
+        )
 
-        self.create_subscription(NavSatFix, "/mavros/global_position/global", self.gps_cb, 10)
-        self.create_subscription(Float32, "/mavros/global_position/compass_hdg", self.heading_cb, 10)
-        self.create_subscription(Int32, "/mission/active_waypoint", self.wp_index_cb, 10)
+        self.create_subscription(
+            NavSatFix,
+            "/mavros/global_position/global",
+            self.gps_cb,
+            10,
+        )
+        self.create_subscription(
+            Float32,
+            "/mavros/global_position/compass_hdg",
+            self.heading_cb,
+            10,
+        )
+        self.create_subscription(
+            Int32,
+            "/mission/active_waypoint",
+            self.wp_index_cb,
+            10,
+        )
+        self.create_subscription(
+            String,
+            "/mission/waypoints",
+            self.waypoints_cb,
+            10,
+        )
+        self.create_subscription(Bool, "/mission/started", self.started_cb, 10)
 
         self.timer = self.create_timer(0.1, self.loop)
 
         self.load_mission()
 
     def load_mission(self) -> None:
-        path = Path(self.mission_file)
+        path = resolve_mission_file(self.mission_file)
         if not path.exists():
-            self.get_logger().error(f"Mission file not found: {self.mission_file}")
+            self.get_logger().error(f"Mission file not found: {path}")
             return
         try:
             data = json.loads(path.read_text(encoding="utf-8"))
             self.waypoints = data.get("waypoints", [])
+            self.get_logger().info(
+                f"Loaded {len(self.waypoints)} waypoint(s) from {path}"
+            )
         except Exception as exc:
             self.get_logger().error(f"Failed to load mission file: {exc}")
 
@@ -59,6 +104,16 @@ class GpsGuidanceNode(Node):
     def wp_index_cb(self, msg: Int32) -> None:
         self.active_waypoint_index = int(msg.data)
 
+    def waypoints_cb(self, msg: String) -> None:
+        try:
+            data = json.loads(msg.data)
+            self.waypoints = data.get("waypoints", self.waypoints)
+        except Exception as exc:
+            self.get_logger().warn(f"Ignoring invalid waypoint message: {exc}")
+
+    def started_cb(self, msg: Bool) -> None:
+        self.mission_started = bool(msg.data)
+
     def loop(self) -> None:
         if self.current_lat is None or self.current_lon is None:
             return
@@ -71,13 +126,23 @@ class GpsGuidanceNode(Node):
         tgt_lat = float(target["lat"])
         tgt_lon = float(target["lon"])
 
-        distance_m = haversine_m(self.current_lat, self.current_lon, tgt_lat, tgt_lon)
-        bearing = bearing_deg(self.current_lat, self.current_lon, tgt_lat, tgt_lon)
+        distance_m = haversine_m(
+            self.current_lat,
+            self.current_lon,
+            tgt_lat,
+            tgt_lon,
+        )
+        bearing = bearing_deg(
+            self.current_lat,
+            self.current_lon,
+            tgt_lat,
+            tgt_lon,
+        )
 
         self.target_bearing_pub.publish(Float32(data=float(bearing)))
         self.target_distance_pub.publish(Float32(data=float(distance_m)))
 
-        if distance_m <= self.arrival_radius_m:
+        if self.mission_started and distance_m <= self.arrival_radius_m:
             self.advance_pub.publish(Bool(data=True))
         else:
             self.advance_pub.publish(Bool(data=False))
@@ -91,6 +156,7 @@ class GpsGuidanceNode(Node):
                         "target_lon": tgt_lon,
                         "target_bearing_deg": bearing,
                         "target_distance_m": distance_m,
+                        "mission_started": self.mission_started,
                     }
                 )
             )
