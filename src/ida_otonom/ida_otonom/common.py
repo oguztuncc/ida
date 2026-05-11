@@ -26,6 +26,10 @@ def normalize_angle_deg(angle: float) -> float:
     return (angle + 180.0) % 360.0 - 180.0
 
 
+def angular_distance_deg(a: float, b: float) -> float:
+    return abs(normalize_angle_deg(a - b))
+
+
 def haversine_m(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     r = 6371000.0
     p1 = math.radians(lat1)

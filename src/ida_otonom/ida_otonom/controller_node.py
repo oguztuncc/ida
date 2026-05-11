@@ -15,6 +15,8 @@ class ControllerNode(Node):
         self.declare_parameter("kp_heading", 0.02)
         self.declare_parameter("max_linear_speed", 0.45)
         self.declare_parameter("max_angular_speed", 0.8)
+        self.declare_parameter("use_planner_bearing", False)
+        self.declare_parameter("planner_timeout_s", 0.5)
 
         self.kp_heading = float(self.get_parameter("kp_heading").value)
         self.max_linear_speed = float(
@@ -23,10 +25,20 @@ class ControllerNode(Node):
         self.max_angular_speed = float(
             self.get_parameter("max_angular_speed").value
         )
+        self.use_planner_bearing = bool(
+            self.get_parameter("use_planner_bearing").value
+        )
+        self.planner_timeout_s = float(
+            self.get_parameter("planner_timeout_s").value
+        )
 
         self.current_heading = None
         self.target_bearing = None
         self.target_distance = None
+        self.planner_bearing = None
+        self.planner_speed_limit = None
+        self.planner_bearing_ts = 0.0
+        self.planner_speed_ts = 0.0
         self.vision_heading_bias = 0.0
         self.mission_started = False
         self.mission_completed = False
@@ -54,6 +66,18 @@ class ControllerNode(Node):
             Float32,
             "/guidance/target_distance_m",
             self.target_distance_cb,
+            10,
+        )
+        self.create_subscription(
+            Float32,
+            "/planner/safe_bearing_deg",
+            self.planner_bearing_cb,
+            10,
+        )
+        self.create_subscription(
+            Float32,
+            "/planner/speed_limit_mps",
+            self.planner_speed_limit_cb,
             10,
         )
         self.create_subscription(
@@ -86,6 +110,14 @@ class ControllerNode(Node):
     def target_distance_cb(self, msg: Float32) -> None:
         self.target_distance = float(msg.data)
 
+    def planner_bearing_cb(self, msg: Float32) -> None:
+        self.planner_bearing = float(msg.data)
+        self.planner_bearing_ts = self.get_clock().now().nanoseconds / 1e9
+
+    def planner_speed_limit_cb(self, msg: Float32) -> None:
+        self.planner_speed_limit = max(0.0, float(msg.data))
+        self.planner_speed_ts = self.get_clock().now().nanoseconds / 1e9
+
     def corridor_hint_cb(self, msg: String) -> None:
         try:
             data = from_json(msg.data)
@@ -116,6 +148,18 @@ class ControllerNode(Node):
             )
         )
 
+    def _planner_fresh(self) -> bool:
+        if self.planner_bearing is None:
+            return False
+        now = self.get_clock().now().nanoseconds / 1e9
+        return now - self.planner_bearing_ts <= self.planner_timeout_s
+
+    def _speed_limit_fresh(self) -> bool:
+        if self.planner_speed_limit is None:
+            return False
+        now = self.get_clock().now().nanoseconds / 1e9
+        return now - self.planner_speed_ts <= self.planner_timeout_s
+
     def loop(self) -> None:
         if not self.mission_started:
             self.publish_stop("mission_not_started")
@@ -128,7 +172,12 @@ class ControllerNode(Node):
         if self.current_heading is None or self.target_bearing is None:
             return
 
+        target_source = "guidance"
         corrected_target = self.target_bearing + self.vision_heading_bias
+        if self.use_planner_bearing and self._planner_fresh():
+            corrected_target = self.planner_bearing
+            target_source = "planner"
+
         heading_error = normalize_angle_deg(
             corrected_target - self.current_heading
         )
@@ -141,6 +190,9 @@ class ControllerNode(Node):
             linear_speed = 0.15
         else:
             linear_speed = 0.05
+
+        if self.use_planner_bearing and self._speed_limit_fresh():
+            linear_speed = min(linear_speed, self.planner_speed_limit)
 
         angular_speed = clamp(
             heading_error * self.kp_heading,
@@ -161,6 +213,8 @@ class ControllerNode(Node):
                         "yaw_rate_setpoint": angular_speed,
                         "heading_error_deg": heading_error,
                         "vision_heading_bias_deg": self.vision_heading_bias,
+                        "target_source": target_source,
+                        "planner_speed_limit_mps": self.planner_speed_limit,
                     }
                 )
             )

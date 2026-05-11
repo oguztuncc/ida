@@ -41,7 +41,16 @@ setup(
             'gps_guidance_node = ida_otonom.gps_guidance_node:main',
             'controller_node = ida_otonom.controller_node:main',
             'mavros_bridge_node = ida_otonom.mavros_bridge_node:main',
+            'lidar_processor_node = ida_otonom.lidar_processor_node:main',
             'local_costmap_node = ida_otonom.local_costmap_node:main',
+            'buoy_detector_node = ida_otonom.buoy_detector_node:main',
+            'course_memory_node = ida_otonom.course_memory_node:main',
+            (
+                'semantic_buoy_classifier_node = '
+                'ida_otonom.semantic_buoy_classifier_node:main'
+            ),
+            'corridor_tracker_node = ida_otonom.corridor_tracker_node:main',
+            'parkur2_planner_node = ida_otonom.parkur2_planner_node:main',
             'rc_kill_node = ida_otonom.rc_kill_node:main',
             'power_relay_node = ida_otonom.power_relay_node:main',
             'perception_node = ida_otonom.perception_node:main',

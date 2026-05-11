@@ -11,6 +11,8 @@ controller_node:
     kp_heading: 0.02
     max_linear_speed: 0.35
     max_angular_speed: 0.6
+    use_planner_bearing: false
+    planner_timeout_s: 0.5
 
 safety_node:
   ros__parameters:
@@ -66,3 +68,70 @@ local_costmap_node:
     width_m: 12.0
     height_m: 12.0
     publish_rate_hz: 1.0
+
+lidar_processor_node:
+  ros__parameters:
+    collision_distance_m: 1.2
+    sector_width_deg: 30.0
+
+buoy_detector_node:
+  ros__parameters:
+    enable_yolo: true
+    model_path: models/buoy_yolo.pt
+    confidence_threshold: 0.45
+    color_image_topic: /camera/camera/color/image_raw
+    depth_image_topic: /camera/camera/aligned_depth_to_color/image_raw
+    camera_info_topic: /camera/camera/color/camera_info
+    assumed_horizontal_fov_deg: 87.0
+    publish_empty_detections: true
+
+course_memory_node:
+  ros__parameters:
+    learn_until_waypoint_index: 0
+    min_samples: 8
+    min_detection_confidence: 0.45
+    course_class_names:
+      - course_buoy
+      - buoy
+      - orange_buoy
+      - blue_buoy
+    max_hue_std_deg: 35.0
+
+semantic_buoy_classifier_node:
+  ros__parameters:
+    course_class_names:
+      - course_buoy
+      - buoy
+      - orange_buoy
+      - blue_buoy
+    obstacle_class_names:
+      - obstacle_buoy
+      - obstacle
+      - yellow_buoy
+    target_class_names:
+      - target_buoy
+    course_hue_tolerance_deg: 35.0
+    strong_color_diff_deg: 55.0
+    min_confidence: 0.35
+
+corridor_tracker_node:
+  ros__parameters:
+    lookahead_m: 4.0
+    expected_corridor_width_m: 4.0
+    vehicle_width_m: 1.10
+    side_safety_margin_m: 0.35
+    min_gate_width_m: 1.80
+    max_boundary_bearing_deg: 70.0
+    min_boundary_range_m: 0.4
+    max_boundary_range_m: 8.0
+
+parkur2_planner_node:
+  ros__parameters:
+    max_speed_mps: 0.25
+    approach_speed_mps: 0.15
+    danger_distance_m: 0.60
+    avoid_start_distance_m: 1.20
+    safe_clearance_m: 1.50
+    max_relative_bearing_deg: 55.0
+    corridor_min_confidence: 0.55
+    sensor_timeout_s: 1.0
