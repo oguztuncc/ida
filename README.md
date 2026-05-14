@@ -80,6 +80,31 @@ ros2 launch ida_otonom parkur1_sim.launch.py \
 Varsayılan görev dosyası package share içinden çözülür:
 `share/ida_otonom/missions/mission.json`.
 
+## Parkur-2 LiDAR Simülasyon
+
+Bu simülasyon gerçek kamera, YOLO veya MAVROS gerektirmez. Sentetik dünya node'u
+GPS, pusula, `/scan`, sentetik buoy detection ve `/sim/world` yayınlar; mevcut
+LiDAR, semantic corridor, planner, controller ve safety zinciri kullanılır.
+
+```bash
+ros2 launch ida_otonom parkur2_sim.launch.py
+```
+
+Başsız çalıştırma örneği:
+
+```bash
+ros2 launch ida_otonom parkur2_sim.launch.py enable_visualizer:=false
+```
+
+Önemli simülasyon topicleri:
+
+- `/scan`: sentetik LiDAR taraması.
+- `/perception/lidar_summary`: front/left/right clearance ve en uygun kaçış açısı.
+- `/local_costmap`: LiDAR'dan üretilen lokal occupancy grid.
+- `/perception/buoy_detections`: sentetik parkur ve obstacle buoy detection'ları.
+- `/planner/status`: `CORRIDOR_TRACK`, `AVOID`, `STOP` ve karar nedeni.
+- `/sim/world`: görselleştirici için dünya ve obstacle metadata.
+
 ## Parkur-2 Planning Stack
 
 Parkur-2 stratejisi:

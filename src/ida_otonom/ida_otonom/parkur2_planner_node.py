@@ -16,6 +16,8 @@ class Parkur2PlannerNode(Node):
         self.declare_parameter("safe_clearance_m", 1.50)
         self.declare_parameter("max_relative_bearing_deg", 55.0)
         self.declare_parameter("corridor_min_confidence", 0.55)
+        self.declare_parameter("corridor_keepout_margin_m", 1.10)
+        self.declare_parameter("min_corridor_return_angle_deg", 25.0)
         self.declare_parameter("sensor_timeout_s", 1.0)
 
         self.max_speed_mps = float(self.get_parameter("max_speed_mps").value)
@@ -36,6 +38,12 @@ class Parkur2PlannerNode(Node):
         )
         self.corridor_min_confidence = float(
             self.get_parameter("corridor_min_confidence").value
+        )
+        self.corridor_keepout_margin_m = float(
+            self.get_parameter("corridor_keepout_margin_m").value
+        )
+        self.min_corridor_return_angle_deg = float(
+            self.get_parameter("min_corridor_return_angle_deg").value
         )
         self.sensor_timeout_s = float(
             self.get_parameter("sensor_timeout_s").value
@@ -131,6 +139,9 @@ class Parkur2PlannerNode(Node):
             return self.target_bearing_deg or 0.0
         return (self.heading_deg + relative_deg) % 360.0
 
+    def _nav_relative_from_body_left(self, relative_deg: float) -> float:
+        return -relative_deg
+
     def _semantic_front_obstacle(self) -> bool:
         if self.semantic is None:
             return False
@@ -164,31 +175,92 @@ class Parkur2PlannerNode(Node):
             return "avoid", front, best_free
         return "clear", front, best_free
 
-    def _corridor_relative_bearing(self):
+    def _corridor_state(self):
         if self.corridor is None:
-            return None, 0.0, "no_corridor"
+            return None, 0.0, "no_corridor", None, None
         if now_ts() - self.corridor_ts > self.sensor_timeout_s:
-            return None, 0.0, "corridor_timeout"
+            return None, 0.0, "corridor_timeout", None, None
         confidence = float(self.corridor.get("confidence", 0.0))
         if confidence < self.corridor_min_confidence:
-            return None, confidence, "low_corridor_confidence"
+            return None, confidence, "low_corridor_confidence", None, None
         bearing = float(self.corridor.get("center_bearing_deg", 0.0))
         bearing = clamp(
             bearing,
             -self.max_relative_bearing_deg,
             self.max_relative_bearing_deg,
         )
-        return bearing, confidence, "corridor_track"
+        center_left = self.corridor.get("center_left_m")
+        estimated_width = self.corridor.get("estimated_width_m")
+        center_left = None if center_left is None else float(center_left)
+        estimated_width = (
+            None if estimated_width is None else float(estimated_width)
+        )
+        return bearing, confidence, "corridor_track", center_left, estimated_width
+
+    def _corridor_limited_body_bearing(
+        self,
+        body_bearing: float,
+        corridor_body_bearing: float | None,
+        center_left_m: float | None,
+        estimated_width_m: float | None,
+    ) -> tuple[float, str | None]:
+        if (
+            corridor_body_bearing is None
+            or center_left_m is None
+            or estimated_width_m is None
+            or estimated_width_m <= 0.0
+        ):
+            return body_bearing, None
+
+        half_width = estimated_width_m / 2.0
+        left_clearance = center_left_m + half_width
+        right_clearance = half_width - center_left_m
+        margin = max(self.corridor_keepout_margin_m, self.safe_clearance_m / 2.0)
+
+        if body_bearing < 0.0 and right_clearance < margin:
+            return self._corridor_return_angle(corridor_body_bearing, 1.0), (
+                "right_boundary_keepout"
+            )
+        if body_bearing > 0.0 and left_clearance < margin:
+            return self._corridor_return_angle(corridor_body_bearing, -1.0), (
+                "left_boundary_keepout"
+            )
+        return body_bearing, None
+
+    def _corridor_return_angle(
+        self,
+        corridor_body_bearing: float,
+        sign: float,
+    ) -> float:
+        angle = max(
+            abs(corridor_body_bearing),
+            self.min_corridor_return_angle_deg,
+        )
+        return clamp(
+            sign * angle,
+            -self.max_relative_bearing_deg,
+            self.max_relative_bearing_deg,
+        )
 
     def loop(self) -> None:
         if self.heading_deg is None or self.target_bearing_deg is None:
             return
 
         lidar_state, front_clearance, best_free = self._lidar_state()
-        corridor_bearing, corridor_confidence, corridor_reason = (
-            self._corridor_relative_bearing()
-        )
+        (
+            corridor_body_bearing,
+            corridor_confidence,
+            corridor_reason,
+            corridor_center_left,
+            corridor_width,
+        ) = self._corridor_state()
+        corridor_bearing = None
+        if corridor_body_bearing is not None:
+            corridor_bearing = self._nav_relative_from_body_left(
+                corridor_body_bearing
+            )
         semantic_front_obstacle = self._semantic_front_obstacle()
+        corridor_limit_reason = None
 
         mode = "WAYPOINT"
         relative_bearing = normalize_angle_deg(
@@ -204,27 +276,47 @@ class Parkur2PlannerNode(Node):
             reason = f"lidar_{lidar_state}"
         elif lidar_state == "danger":
             mode = "STOP"
-            relative_bearing = 0.0
+            body_bearing, corridor_limit_reason = (
+                self._corridor_limited_body_bearing(
+                    best_free,
+                    corridor_body_bearing,
+                    corridor_center_left,
+                    corridor_width,
+                )
+            )
+            relative_bearing = clamp(
+                self._nav_relative_from_body_left(body_bearing),
+                -self.max_relative_bearing_deg,
+                self.max_relative_bearing_deg,
+            )
             speed_limit = 0.0
-            reason = "front_danger_distance"
+            reason = corridor_limit_reason or "front_danger_turn_in_place"
+        elif lidar_state == "avoid" or semantic_front_obstacle:
+            mode = "AVOID"
+            body_bearing, corridor_limit_reason = (
+                self._corridor_limited_body_bearing(
+                    best_free,
+                    corridor_body_bearing,
+                    corridor_center_left,
+                    corridor_width,
+                )
+            )
+            relative_bearing = clamp(
+                self._nav_relative_from_body_left(body_bearing),
+                -self.max_relative_bearing_deg,
+                self.max_relative_bearing_deg,
+            )
+            speed_limit = self.approach_speed_mps
+            reason = corridor_limit_reason or (
+                "local_obstacle_avoidance"
+                if lidar_state == "avoid"
+                else "semantic_front_obstacle"
+            )
         elif corridor_bearing is not None:
             mode = "CORRIDOR_TRACK"
             relative_bearing = corridor_bearing
             speed_limit = self.max_speed_mps
             reason = corridor_reason
-        elif lidar_state == "avoid" or semantic_front_obstacle:
-            mode = "AVOID"
-            relative_bearing = clamp(
-                best_free,
-                -self.max_relative_bearing_deg,
-                self.max_relative_bearing_deg,
-            )
-            speed_limit = self.approach_speed_mps
-            reason = "local_obstacle_avoidance"
-
-        if lidar_state == "avoid" and mode == "CORRIDOR_TRACK":
-            speed_limit = min(speed_limit, self.approach_speed_mps)
-            reason = "corridor_track_with_front_obstacle"
 
         safe_bearing = self._absolute_from_relative(relative_bearing)
         self.safe_bearing_pub.publish(Float32(data=float(safe_bearing)))
@@ -241,6 +333,9 @@ class Parkur2PlannerNode(Node):
                         "front_clearance_m": front_clearance,
                         "lidar_state": lidar_state,
                         "corridor_confidence": corridor_confidence,
+                        "corridor_center_left_m": corridor_center_left,
+                        "corridor_width_m": corridor_width,
+                        "corridor_limit_reason": corridor_limit_reason,
                         "reason": reason,
                     }
                 )

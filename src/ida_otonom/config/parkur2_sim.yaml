@@ -1,0 +1,122 @@
+parkur2_sim_node:
+  ros__parameters:
+    initial_lat: 40.1181000
+    initial_lon: 26.4081000
+    initial_heading_deg: 45.0
+    update_rate_hz: 20.0
+    scan_rate_hz: 10.0
+    detection_rate_hz: 8.0
+    world_rate_hz: 2.0
+    max_speed_mps: 0.40
+    max_yaw_rate_radps: 0.85
+    cmd_vel_topic: /control/cmd_vel_safe
+    scan_range_max_m: 12.0
+    scan_range_min_m: 0.15
+    scan_ray_count: 361
+    detection_range_max_m: 10.0
+    detection_fov_deg: 110.0
+
+mission_manager_node:
+  ros__parameters:
+    auto_start: true
+
+gps_guidance_node:
+  ros__parameters:
+    arrival_radius_m: 2.0
+
+controller_node:
+  ros__parameters:
+    kp_heading: 0.026
+    max_linear_speed: 0.34
+    max_angular_speed: 0.80
+    use_planner_bearing: true
+    planner_timeout_s: 0.8
+
+safety_node:
+  ros__parameters:
+    input_topic: /control/cmd_vel
+    output_topic: /control/cmd_vel_safe
+    latch_kill: true
+
+logger_node:
+  ros__parameters:
+    log_dir: /tmp/ida_otonom_logs
+
+local_costmap_node:
+  ros__parameters:
+    log_dir: /tmp/ida_otonom_logs
+    resolution_m: 0.20
+    width_m: 16.0
+    height_m: 16.0
+    publish_rate_hz: 2.0
+
+lidar_processor_node:
+  ros__parameters:
+    collision_distance_m: 0.90
+    sector_width_deg: 40.0
+    max_avoidance_angle_deg: 65.0
+    min_avoidance_angle_deg: 40.0
+    candidate_step_deg: 5.0
+    candidate_sector_width_deg: 18.0
+    avoidance_release_distance_m: 5.0
+    latch_avoidance_direction: true
+
+course_memory_node:
+  ros__parameters:
+    learn_until_waypoint_index: 1
+    min_samples: 4
+    min_detection_confidence: 0.45
+    course_class_names:
+      - course_buoy
+      - buoy
+      - orange_buoy
+    max_hue_std_deg: 35.0
+    publish_rate_hz: 3.0
+
+semantic_buoy_classifier_node:
+  ros__parameters:
+    course_class_names:
+      - course_buoy
+      - buoy
+      - orange_buoy
+    obstacle_class_names:
+      - obstacle_buoy
+      - obstacle
+      - yellow_buoy
+    target_class_names:
+      - target_buoy
+    course_hue_tolerance_deg: 35.0
+    strong_color_diff_deg: 55.0
+    min_confidence: 0.35
+
+corridor_tracker_node:
+  ros__parameters:
+    lookahead_m: 4.0
+    expected_corridor_width_m: 6.0
+    vehicle_width_m: 1.10
+    side_safety_margin_m: 0.35
+    min_gate_width_m: 2.20
+    max_boundary_bearing_deg: 75.0
+    min_boundary_range_m: 0.4
+    max_boundary_range_m: 10.0
+
+parkur2_planner_node:
+  ros__parameters:
+    max_speed_mps: 0.30
+    approach_speed_mps: 0.10
+    danger_distance_m: 0.90
+    avoid_start_distance_m: 4.00
+    safe_clearance_m: 1.50
+    max_relative_bearing_deg: 70.0
+    corridor_min_confidence: 0.45
+    corridor_keepout_margin_m: 1.30
+    min_corridor_return_angle_deg: 30.0
+    sensor_timeout_s: 1.0
+
+sim_visualizer_node:
+  ros__parameters:
+    window_width: 1100
+    window_height: 760
+    refresh_hz: 20.0
+    trail_length: 3500
+    window_title: IDA Parkur-2 LiDAR Simulation

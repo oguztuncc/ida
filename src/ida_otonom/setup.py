@@ -58,6 +58,7 @@ setup(
             'yki_bridge_node = ida_otonom.yki_bridge_node:main',
             'safety_node = ida_otonom.safety_node:main',
             'sim_visualizer_node = ida_otonom.sim_visualizer_node:main',
+            'parkur2_sim_node = ida_otonom.parkur2_sim_node:main',
         ],
     },
 )

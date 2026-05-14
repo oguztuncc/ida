@@ -5,7 +5,7 @@ from tkinter import TclError
 
 import rclpy
 from rclpy.node import Node
-from sensor_msgs.msg import NavSatFix
+from sensor_msgs.msg import LaserScan, NavSatFix
 from std_msgs.msg import Float32, Int32, String
 
 
@@ -17,11 +17,17 @@ class SimVisualizerNode(Node):
         self.declare_parameter("window_height", 720)
         self.declare_parameter("refresh_hz", 20.0)
         self.declare_parameter("trail_length", 2500)
+        self.declare_parameter("window_title", "IDA Simulation")
+        self.declare_parameter("draw_lidar_rays", True)
 
         self.width = int(self.get_parameter("window_width").value)
         self.height = int(self.get_parameter("window_height").value)
         self.refresh_hz = float(self.get_parameter("refresh_hz").value)
         self.trail_length = int(self.get_parameter("trail_length").value)
+        self.window_title = str(self.get_parameter("window_title").value)
+        self.draw_lidar_rays = bool(
+            self.get_parameter("draw_lidar_rays").value
+        )
 
         self.current_lat = None
         self.current_lon = None
@@ -32,6 +38,10 @@ class SimVisualizerNode(Node):
         self.mission_status = {}
         self.guidance_status = {}
         self.setpoints = {}
+        self.sim_world = {}
+        self.planner_status = {}
+        self.lidar_summary = {}
+        self.latest_scan = None
         self.origin_lat = None
         self.origin_lon = None
         self.closed = False
@@ -78,9 +88,28 @@ class SimVisualizerNode(Node):
             self.setpoints_cb,
             10,
         )
+        self.create_subscription(
+            String,
+            "/sim/world",
+            self.sim_world_cb,
+            10,
+        )
+        self.create_subscription(
+            String,
+            "/planner/status",
+            self.planner_status_cb,
+            10,
+        )
+        self.create_subscription(
+            String,
+            "/perception/lidar_summary",
+            self.lidar_summary_cb,
+            10,
+        )
+        self.create_subscription(LaserScan, "/scan", self.scan_cb, 10)
 
         self.root = tk.Tk()
-        self.root.title("IDA Parkur-1 Simulation")
+        self.root.title(self.window_title)
         self.canvas = tk.Canvas(
             self.root,
             width=self.width,
@@ -129,6 +158,22 @@ class SimVisualizerNode(Node):
     def setpoints_cb(self, msg: String) -> None:
         self.setpoints = self._parse_json(msg.data)
 
+    def sim_world_cb(self, msg: String) -> None:
+        self.sim_world = self._parse_json(msg.data)
+        origin = self.sim_world.get("origin", {})
+        if origin.get("lat") is not None and origin.get("lon") is not None:
+            self.origin_lat = float(origin["lat"])
+            self.origin_lon = float(origin["lon"])
+
+    def planner_status_cb(self, msg: String) -> None:
+        self.planner_status = self._parse_json(msg.data)
+
+    def lidar_summary_cb(self, msg: String) -> None:
+        self.lidar_summary = self._parse_json(msg.data)
+
+    def scan_cb(self, msg: LaserScan) -> None:
+        self.latest_scan = msg
+
     def _parse_json(self, text: str) -> dict:
         try:
             return json.loads(text)
@@ -145,16 +190,50 @@ class SimVisualizerNode(Node):
         north_m = (lat - self.origin_lat) * lat_scale
         return east_m, north_m
 
+    def _scan_world_points(self, stride: int = 8) -> list[tuple[float, float]]:
+        if (
+            self.latest_scan is None
+            or self.current_lat is None
+            or self.current_lon is None
+        ):
+            return []
+
+        boat_east, boat_north = self._project(self.current_lat, self.current_lon)
+        heading = math.radians(self.heading_deg)
+        points = []
+        angle = self.latest_scan.angle_min
+        for index, distance in enumerate(self.latest_scan.ranges):
+            if index % max(stride, 1) != 0:
+                angle += self.latest_scan.angle_increment
+                continue
+            if (
+                math.isfinite(distance)
+                and self.latest_scan.range_min
+                <= distance
+                <= self.latest_scan.range_max
+            ):
+                forward = distance * math.cos(angle)
+                left = distance * math.sin(angle)
+                east = boat_east + forward * math.sin(heading) - left * math.cos(heading)
+                north = boat_north + forward * math.cos(heading) + left * math.sin(heading)
+                points.append((east, north))
+            angle += self.latest_scan.angle_increment
+        return points
+
     def _screen_transform(self):
         points = []
         points.extend(self._project(lat, lon) for lat, lon in self.waypoints)
         points.extend(self._project(lat, lon) for lat, lon in self.trail)
+        for obj in self.sim_world.get("objects", []):
+            if obj.get("lat") is not None and obj.get("lon") is not None:
+                points.append(self._project(float(obj["lat"]), float(obj["lon"])))
+        points.extend(self._scan_world_points(stride=12))
         if self.current_lat is not None and self.current_lon is not None:
             points.append(self._project(self.current_lat, self.current_lon))
 
         canvas_w = max(self.canvas.winfo_width(), 1)
         canvas_h = max(self.canvas.winfo_height(), 1)
-        status_h = 130
+        status_h = 155
         map_h = max(canvas_h - status_h, 1)
         margin = 55
 
@@ -202,6 +281,8 @@ class SimVisualizerNode(Node):
             outline="",
         )
         self._draw_grid(canvas_w, map_h)
+        self._draw_scan(to_screen)
+        self._draw_sim_world(to_screen)
         self._draw_route(to_screen)
         self._draw_trail(to_screen)
         self._draw_target_line(to_screen)
@@ -232,6 +313,59 @@ class SimVisualizerNode(Node):
             fill="#d7f3ff",
             outline="",
         )
+
+    def _draw_scan(self, to_screen) -> None:
+        if self.current_lat is None or self.current_lon is None:
+            return
+        scan_points = self._scan_world_points(stride=4)
+        if not scan_points:
+            return
+
+        boat_x, boat_y = to_screen(*self._project(self.current_lat, self.current_lon))
+        for east, north in scan_points:
+            x, y = to_screen(east, north)
+            if self.draw_lidar_rays:
+                self.canvas.create_line(boat_x, boat_y, x, y, fill="#14566b")
+            self.canvas.create_oval(
+                x - 2,
+                y - 2,
+                x + 2,
+                y + 2,
+                fill="#2cf0ff",
+                outline="",
+            )
+
+    def _draw_sim_world(self, to_screen) -> None:
+        for obj in self.sim_world.get("objects", []):
+            if obj.get("lat") is None or obj.get("lon") is None:
+                continue
+            east, north = self._project(float(obj["lat"]), float(obj["lon"]))
+            x, y = to_screen(east, north)
+            radius_m = float(obj.get("radius_m", 0.4))
+            rx, _ = to_screen(east + radius_m, north)
+            radius_px = max(5.0, abs(rx - x))
+            kind = str(obj.get("kind", ""))
+            fill = str(obj.get("color") or "#d7f3ff")
+            outline = "#ffffff" if kind == "obstacle" else "#7ec8ff"
+            width = 3 if kind == "obstacle" else 2
+            self.canvas.create_oval(
+                x - radius_px,
+                y - radius_px,
+                x + radius_px,
+                y + radius_px,
+                fill=fill,
+                outline=outline,
+                width=width,
+            )
+            if kind == "obstacle":
+                self.canvas.create_text(
+                    x,
+                    y - radius_px - 10,
+                    text="OBS",
+                    fill="#ffe15a",
+                    anchor="s",
+                    font=("Sans", 9, "bold"),
+                )
 
     def _draw_route(self, to_screen) -> None:
         if len(self.waypoints) >= 2:
@@ -356,16 +490,29 @@ class SimVisualizerNode(Node):
         speed = self.setpoints.get("speed_setpoint", 0.0)
         yaw_rate = self.setpoints.get("yaw_rate_setpoint", 0.0)
         stop_reason = self.setpoints.get("stop_reason")
+        planner_mode = self.planner_status.get("mode", "--")
+        planner_reason = self.planner_status.get("reason", "--")
+        lidar_state = self.planner_status.get("lidar_state", "--")
+        front_clearance = self.planner_status.get(
+            "front_clearance_m",
+            self.lidar_summary.get("front_clearance_m"),
+        )
+        sim_boat = self.sim_world.get("boat", {})
+        closest_clearance = sim_boat.get("closest_clearance_m")
+        collision = bool(sim_boat.get("collision", False))
 
         left_lines = [
             f"Mission: started={mission_started} completed={mission_completed}",
             f"Active waypoint: {self.active_waypoint_index}/{max(len(self.waypoints) - 1, 0)}",
             self._format_gps_line(),
+            f"LiDAR: {lidar_state} front={self._fmt(front_clearance)} m",
+            f"Closest object: {self._fmt(closest_clearance)} m collision={collision}",
         ]
         right_lines = [
             f"Heading: {self.heading_deg:.1f} deg",
             f"Target: {self._fmt(target_distance)} m @ {self._fmt(target_bearing)} deg",
             f"Command: speed={speed:.2f} m/s yaw={yaw_rate:.2f} rad/s",
+            f"Planner: {planner_mode} ({planner_reason})",
         ]
         if stop_reason:
             right_lines.append(f"Stop reason: {stop_reason}")
