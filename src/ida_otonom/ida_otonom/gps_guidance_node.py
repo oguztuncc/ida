@@ -45,7 +45,7 @@ class GpsGuidanceNode(Node):
         )
         self.status_pub = self.create_publisher(String, "/guidance/status", 10)
         self.advance_pub = self.create_publisher(
-            Bool,
+            Int32,
             "/guidance/advance_waypoint",
             10,
         )
@@ -143,9 +143,7 @@ class GpsGuidanceNode(Node):
         self.target_distance_pub.publish(Float32(data=float(distance_m)))
 
         if self.mission_started and distance_m <= self.arrival_radius_m:
-            self.advance_pub.publish(Bool(data=True))
-        else:
-            self.advance_pub.publish(Bool(data=False))
+            self.advance_pub.publish(Int32(data=self.active_waypoint_index))
 
         self.status_pub.publish(
             String(

@@ -57,6 +57,7 @@ setup(
             'logger_node = ida_otonom.logger_node:main',
             'yki_bridge_node = ida_otonom.yki_bridge_node:main',
             'safety_node = ida_otonom.safety_node:main',
+            'sim_visualizer_node = ida_otonom.sim_visualizer_node:main',
         ],
     },
 )

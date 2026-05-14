@@ -47,8 +47,21 @@ source install/setup.bash
 
 ## Parkur-1 Simülasyon
 
+`ros2 launch` komutu yoksa önce Jazzy launch aracı kurulmalıdır:
+
+```bash
+sudo apt install ros-jazzy-ros2launch
+```
+
 ```bash
 ros2 launch ida_otonom parkur1_sim.launch.py
+```
+
+Simülasyon varsayılan olarak turtle-benzeri görsel arayüzü de açar. Başsız
+ortamda kapatmak için:
+
+```bash
+ros2 launch ida_otonom parkur1_sim.launch.py enable_visualizer:=false
 ```
 
 Kullanışlı launch argument örnekleri:
@@ -57,6 +70,7 @@ Kullanışlı launch argument örnekleri:
 ros2 launch ida_otonom parkur1_sim.launch.py \
   mission_file:=/path/to/mission.json \
   arrival_radius_m:=3.0 \
+  enable_visualizer:=true \
   log_dir:=/tmp/ida_otonom_logs \
   enable_logger:=true \
   enable_costmap_logger:=false \

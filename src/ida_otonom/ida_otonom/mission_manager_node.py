@@ -37,7 +37,7 @@ class MissionManagerNode(Node):
         )
 
         self.create_subscription(
-            Bool,
+            Int32,
             "/guidance/advance_waypoint",
             self.advance_cb,
             10,
@@ -88,21 +88,25 @@ class MissionManagerNode(Node):
             self.mission_started = True
             self.get_logger().info("Mission started")
 
-    def advance_cb(self, msg: Bool) -> None:
+    def advance_cb(self, msg: Int32) -> None:
         if (
-            not msg.data
-            or not self.mission_loaded
+            not self.mission_loaded
             or not self.mission_started
             or self.mission_completed
         ):
             return
 
-        self.active_waypoint_index += 1
-        if self.active_waypoint_index >= len(self.waypoints):
-            self.active_waypoint_index = len(self.waypoints) - 1
+        reached_index = int(msg.data)
+        if reached_index != self.active_waypoint_index:
+            return
+
+        if self.active_waypoint_index >= len(self.waypoints) - 1:
             self.mission_completed = True
             self.mission_started = False
             self.get_logger().info("Mission completed")
+            return
+
+        self.active_waypoint_index += 1
 
     def loop(self) -> None:
         self.active_wp_pub.publish(Int32(data=self.active_waypoint_index))

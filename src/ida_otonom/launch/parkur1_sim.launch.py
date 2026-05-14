@@ -13,6 +13,7 @@ def generate_launch_description():
     log_dir = LaunchConfiguration("log_dir")
     enable_logger = LaunchConfiguration("enable_logger")
     enable_costmap_logger = LaunchConfiguration("enable_costmap_logger")
+    enable_visualizer = LaunchConfiguration("enable_visualizer")
     enable_yki_bridge = LaunchConfiguration("enable_yki_bridge")
     yki_udp_ip = LaunchConfiguration("yki_udp_ip")
     yki_udp_port = LaunchConfiguration("yki_udp_port")
@@ -51,6 +52,11 @@ def generate_launch_description():
                 "enable_costmap_logger",
                 default_value="false",
                 description="Start local costmap logger.",
+            ),
+            DeclareLaunchArgument(
+                "enable_visualizer",
+                default_value="true",
+                description="Start turtle-style simulation visualizer.",
             ),
             DeclareLaunchArgument(
                 "enable_yki_bridge",
@@ -117,6 +123,13 @@ def generate_launch_description():
                 parameters=[
                     {"log_dir": ParameterValue(log_dir, value_type=str)}
                 ],
+            ),
+            Node(
+                package="ida_otonom",
+                executable="sim_visualizer_node",
+                name="sim_visualizer_node",
+                output="screen",
+                condition=IfCondition(enable_visualizer),
             ),
             Node(
                 package="ida_otonom",
