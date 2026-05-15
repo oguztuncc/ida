@@ -27,9 +27,9 @@ gps_guidance_node:
 
 controller_node:
   ros__parameters:
-    kp_heading: 0.026
+    kp_heading: 0.017
     max_linear_speed: 0.34
-    max_angular_speed: 0.80
+    max_angular_speed: 0.42
     use_planner_bearing: true
     planner_timeout_s: 0.8
 
@@ -102,7 +102,7 @@ corridor_tracker_node:
     max_boundary_range_m: 10.0
     center_smoothing_alpha: 0.25
     max_center_step_m: 0.6
-    obstacle_avoidance_enabled: true
+    obstacle_avoidance_enabled: false
     obstacle_avoidance_range_m: 8.0
     obstacle_avoidance_margin_m: 0.80
     obstacle_max_offset_m: 1.50
@@ -111,22 +111,22 @@ parkur2_planner_node:
   ros__parameters:
     max_speed_mps: 0.30
     approach_speed_mps: 0.15
-    danger_distance_m: 0.90
-    avoid_start_distance_m: 4.00
+    danger_distance_m: 0.70
+    avoid_start_distance_m: 3.20
+    emergency_stop_distance_m: 0.45
     safe_clearance_m: 1.50
-    max_relative_bearing_deg: 70.0
-    corridor_min_confidence: 0.35
-    corridor_keepout_margin_m: 1.30
-    min_corridor_return_angle_deg: 30.0
-    scan_before_bypass: true
-    scan_duration_s: 2.0
-    scan_spin_angle_deg: 65.0
-    scan_cooldown_s: 2.0
-    bypass_hold_s: 3.0
-    obstacle_pass_margin_m: 1.10
-    bypass_lookahead_m: 3.0
-    require_corridor_for_motion: true
-    corridor_search_angle_deg: 35.0
+    max_relative_bearing_deg: 35.0
+    max_pass_bearing_deg: 25.0
+    max_return_bearing_deg: 18.0
+    corridor_min_confidence: 0.45
+    corridor_keepout_margin_m: 1.20
+    obstacle_pass_margin_m: 1.20
+    pass_lookahead_m: 6.0
+    return_lookahead_m: 6.0
+    pass_min_duration_s: 1.5
+    pass_release_after_lost_s: 1.0
+    corridor_coast_s: 1.2
+    bearing_rate_limit_degps: 70.0
     sensor_timeout_s: 1.0
 
 sim_visualizer_node:

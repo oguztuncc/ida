@@ -23,7 +23,7 @@ class CorridorTrackerNode(Node):
         self.declare_parameter("lookahead_window_m", 3.0)
         self.declare_parameter("center_smoothing_alpha", 0.35)
         self.declare_parameter("max_center_step_m", 1.0)
-        self.declare_parameter("obstacle_avoidance_enabled", True)
+        self.declare_parameter("obstacle_avoidance_enabled", False)
         self.declare_parameter("obstacle_avoidance_range_m", 8.0)
         self.declare_parameter("obstacle_avoidance_margin_m", 0.80)
         self.declare_parameter("obstacle_max_offset_m", 1.50)

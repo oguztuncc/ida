@@ -13,23 +13,38 @@ class Parkur2PlannerNode(Node):
 
         self.declare_parameter("max_speed_mps", 0.25)
         self.declare_parameter("approach_speed_mps", 0.15)
-        self.declare_parameter("danger_distance_m", 0.60)
-        self.declare_parameter("avoid_start_distance_m", 1.20)
+        self.declare_parameter("danger_distance_m", 0.70)
+        self.declare_parameter("avoid_start_distance_m", 3.20)
+        self.declare_parameter("emergency_stop_distance_m", 0.45)
         self.declare_parameter("safe_clearance_m", 1.50)
-        self.declare_parameter("max_relative_bearing_deg", 55.0)
-        self.declare_parameter("corridor_min_confidence", 0.55)
-        self.declare_parameter("corridor_keepout_margin_m", 1.10)
-        self.declare_parameter("min_corridor_return_angle_deg", 25.0)
-        self.declare_parameter("scan_before_bypass", True)
-        self.declare_parameter("scan_duration_s", 3.0)
-        self.declare_parameter("scan_spin_angle_deg", 65.0)
-        self.declare_parameter("scan_cooldown_s", 2.0)
-        self.declare_parameter("bypass_hold_s", 4.0)
-        self.declare_parameter("obstacle_pass_margin_m", 1.10)
-        self.declare_parameter("bypass_lookahead_m", 3.0)
-        self.declare_parameter("require_corridor_for_motion", False)
-        self.declare_parameter("corridor_search_angle_deg", 35.0)
+        self.declare_parameter("max_relative_bearing_deg", 35.0)
+        self.declare_parameter("max_pass_bearing_deg", 25.0)
+        self.declare_parameter("max_return_bearing_deg", 18.0)
+        self.declare_parameter("corridor_min_confidence", 0.45)
+        self.declare_parameter("corridor_keepout_margin_m", 1.20)
+        self.declare_parameter("obstacle_pass_margin_m", 1.20)
+        self.declare_parameter("pass_lookahead_m", 6.0)
+        self.declare_parameter("return_lookahead_m", 6.0)
+        self.declare_parameter("pass_min_duration_s", 1.5)
+        self.declare_parameter("pass_release_after_lost_s", 1.0)
+        self.declare_parameter("corridor_coast_s", 1.2)
+        self.declare_parameter("bearing_rate_limit_degps", 70.0)
         self.declare_parameter("sensor_timeout_s", 1.0)
+
+        # Legacy parameters may still exist in YAML files; declare them so
+        # launch overrides remain harmless while this node uses the new state
+        # machine below.
+        self.declare_parameter("scan_before_bypass", False)
+        self.declare_parameter("scan_duration_s", 0.0)
+        self.declare_parameter("scan_spin_angle_deg", 0.0)
+        self.declare_parameter("scan_cooldown_s", 0.0)
+        self.declare_parameter("bypass_hold_s", 0.0)
+        self.declare_parameter("bypass_release_distance_m", 0.0)
+        self.declare_parameter("bypass_lookahead_m", 0.0)
+        self.declare_parameter("heading_recovery_threshold_deg", 0.0)
+        self.declare_parameter("require_corridor_for_motion", False)
+        self.declare_parameter("corridor_search_angle_deg", 0.0)
+        self.declare_parameter("min_corridor_return_angle_deg", 0.0)
 
         self.max_speed_mps = float(self.get_parameter("max_speed_mps").value)
         self.approach_speed_mps = float(
@@ -41,11 +56,20 @@ class Parkur2PlannerNode(Node):
         self.avoid_start_distance_m = float(
             self.get_parameter("avoid_start_distance_m").value
         )
+        self.emergency_stop_distance_m = float(
+            self.get_parameter("emergency_stop_distance_m").value
+        )
         self.safe_clearance_m = float(
             self.get_parameter("safe_clearance_m").value
         )
         self.max_relative_bearing_deg = float(
             self.get_parameter("max_relative_bearing_deg").value
+        )
+        self.max_pass_bearing_deg = float(
+            self.get_parameter("max_pass_bearing_deg").value
+        )
+        self.max_return_bearing_deg = float(
+            self.get_parameter("max_return_bearing_deg").value
         )
         self.corridor_min_confidence = float(
             self.get_parameter("corridor_min_confidence").value
@@ -53,35 +77,26 @@ class Parkur2PlannerNode(Node):
         self.corridor_keepout_margin_m = float(
             self.get_parameter("corridor_keepout_margin_m").value
         )
-        self.min_corridor_return_angle_deg = float(
-            self.get_parameter("min_corridor_return_angle_deg").value
-        )
-        self.scan_before_bypass = bool(
-            self.get_parameter("scan_before_bypass").value
-        )
-        self.scan_duration_s = float(
-            self.get_parameter("scan_duration_s").value
-        )
-        self.scan_spin_angle_deg = float(
-            self.get_parameter("scan_spin_angle_deg").value
-        )
-        self.scan_cooldown_s = float(
-            self.get_parameter("scan_cooldown_s").value
-        )
-        self.bypass_hold_s = float(
-            self.get_parameter("bypass_hold_s").value
-        )
         self.obstacle_pass_margin_m = float(
             self.get_parameter("obstacle_pass_margin_m").value
         )
-        self.bypass_lookahead_m = float(
-            self.get_parameter("bypass_lookahead_m").value
+        self.pass_lookahead_m = float(
+            self.get_parameter("pass_lookahead_m").value
         )
-        self.require_corridor_for_motion = bool(
-            self.get_parameter("require_corridor_for_motion").value
+        self.return_lookahead_m = float(
+            self.get_parameter("return_lookahead_m").value
         )
-        self.corridor_search_angle_deg = float(
-            self.get_parameter("corridor_search_angle_deg").value
+        self.pass_min_duration_s = float(
+            self.get_parameter("pass_min_duration_s").value
+        )
+        self.pass_release_after_lost_s = float(
+            self.get_parameter("pass_release_after_lost_s").value
+        )
+        self.corridor_coast_s = float(
+            self.get_parameter("corridor_coast_s").value
+        )
+        self.bearing_rate_limit_degps = float(
+            self.get_parameter("bearing_rate_limit_degps").value
         )
         self.sensor_timeout_s = float(
             self.get_parameter("sensor_timeout_s").value
@@ -95,15 +110,17 @@ class Parkur2PlannerNode(Node):
         self.lidar_ts = 0.0
         self.corridor_ts = 0.0
         self.semantic_ts = 0.0
-        self.scan_active = False
-        self.scan_started_ts = 0.0
-        self.scan_direction = 1.0
-        self.scan_target_bearing_deg = None
-        self.scan_samples = []
-        self.scan_obstacle = None
-        self.last_scan_completed_ts = -999.0
-        self.bypass_body_bearing = None
-        self.bypass_until_ts = 0.0
+        self.last_corridor = None
+        self.last_corridor_ts = 0.0
+
+        self.mode = "CRUISE"
+        self.pass_side = 0.0
+        self.pass_started_ts = 0.0
+        self.pass_last_obstacle_ts = 0.0
+        self.active_obstacle_id = None
+        self.target_left_m = 0.0
+        self.last_relative_bearing = None
+        self.last_plan_ts = 0.0
 
         self.safe_bearing_pub = self.create_publisher(
             Float32,
@@ -181,46 +198,19 @@ class Parkur2PlannerNode(Node):
         except Exception:
             self.semantic = None
 
+    def _target_relative_bearing(self) -> float:
+        return normalize_angle_deg(self.target_bearing_deg - self.heading_deg)
+
     def _absolute_from_relative(self, relative_deg: float) -> float:
-        if self.heading_deg is None:
-            return self.target_bearing_deg or 0.0
         return (self.heading_deg + relative_deg) % 360.0
 
-    def _nav_relative_from_body_left(self, relative_deg: float) -> float:
-        return -relative_deg
+    def _nav_relative_from_body_left(self, body_left_deg: float) -> float:
+        return -body_left_deg
 
-    def _semantic_front_obstacle(self) -> bool:
-        return self._nearest_front_obstacle() is not None
+    def _body_left_from_nav_relative(self, nav_relative_deg: float) -> float:
+        return -nav_relative_deg
 
-    def _nearest_front_obstacle(self):
-        if self.semantic is None:
-            return None
-        nearest = None
-        for buoy in self.semantic.get("buoys", []):
-            if buoy.get("semantic") not in (
-                "obstacle_candidate",
-                "unknown",
-            ):
-                continue
-            forward = buoy.get("forward_m")
-            left = buoy.get("left_m")
-            if forward is None or left is None:
-                continue
-            forward = float(forward)
-            left = float(left)
-            if not 0.0 < forward < self.avoid_start_distance_m + 1.0:
-                continue
-            if abs(left) > self.safe_clearance_m:
-                continue
-            if nearest is None or forward < nearest["forward_m"]:
-                nearest = {
-                    "forward_m": forward,
-                    "left_m": left,
-                    "id": buoy.get("id"),
-                }
-        return nearest
-
-    def _lidar_state(self):
+    def _lidar_state(self) -> tuple[str, float | None, float]:
         now = now_ts()
         if self.lidar_summary is None:
             return "missing", None, 0.0
@@ -229,6 +219,8 @@ class Parkur2PlannerNode(Node):
 
         front = float(self.lidar_summary.get("front_clearance_m", 999.0))
         best_free = float(self.lidar_summary.get("best_free_angle_deg", 0.0))
+        if front < self.emergency_stop_distance_m:
+            return "emergency", front, best_free
         if front < self.danger_distance_m:
             return "danger", front, best_free
         if front < self.avoid_start_distance_m:
@@ -236,252 +228,144 @@ class Parkur2PlannerNode(Node):
         return "clear", front, best_free
 
     def _corridor_state(self):
-        if self.corridor is None:
-            return None, 0.0, "no_corridor", None, None
-        if now_ts() - self.corridor_ts > self.sensor_timeout_s:
-            return None, 0.0, "corridor_timeout", None, None
-        confidence = float(self.corridor.get("confidence", 0.0))
-        if confidence < self.corridor_min_confidence:
-            return None, confidence, "low_corridor_confidence", None, None
-        bearing = float(self.corridor.get("center_bearing_deg", 0.0))
-        bearing = clamp(
-            bearing,
-            -self.max_relative_bearing_deg,
-            self.max_relative_bearing_deg,
-        )
-        center_left = self.corridor.get("center_left_m")
-        estimated_width = self.corridor.get("estimated_width_m")
-        center_left = None if center_left is None else float(center_left)
-        estimated_width = (
-            None if estimated_width is None else float(estimated_width)
-        )
-        return bearing, confidence, "corridor_track", center_left, estimated_width
+        now = now_ts()
+        current = None
+        if self.corridor is not None and now - self.corridor_ts <= self.sensor_timeout_s:
+            confidence = float(self.corridor.get("confidence", 0.0))
+            if confidence >= self.corridor_min_confidence:
+                center_left = self.corridor.get("center_left_m")
+                width = self.corridor.get("estimated_width_m")
+                bearing = float(self.corridor.get("center_bearing_deg", 0.0))
+                if center_left is not None and width is not None:
+                    current = {
+                        "center_left_m": float(center_left),
+                        "width_m": float(width),
+                        "body_bearing_deg": clamp(
+                            bearing,
+                            -self.max_relative_bearing_deg,
+                            self.max_relative_bearing_deg,
+                        ),
+                        "confidence": confidence,
+                        "reason": "corridor_track",
+                    }
 
-    def _corridor_limited_body_bearing(
-        self,
-        body_bearing: float,
-        corridor_body_bearing: float | None,
-        center_left_m: float | None,
-        estimated_width_m: float | None,
-    ) -> tuple[float, str | None]:
+        if current is not None:
+            self.last_corridor = current
+            self.last_corridor_ts = now
+            return current
+
         if (
-            corridor_body_bearing is None
-            or center_left_m is None
-            or estimated_width_m is None
-            or estimated_width_m <= 0.0
+            self.last_corridor is not None
+            and now - self.last_corridor_ts <= self.corridor_coast_s
         ):
-            return body_bearing, None
+            coast = dict(self.last_corridor)
+            coast["confidence"] = min(float(coast["confidence"]), 0.45)
+            coast["reason"] = "corridor_coast"
+            return coast
 
-        half_width = estimated_width_m / 2.0
-        left_clearance = center_left_m + half_width
-        right_clearance = half_width - center_left_m
+        return None
+
+    def _corridor_bounds(self, corridor) -> tuple[float, float] | None:
+        if corridor is None:
+            return None
+        width = float(corridor["width_m"])
+        if width <= 0.0:
+            return None
+        center = float(corridor["center_left_m"])
+        half = width / 2.0
         margin = max(self.corridor_keepout_margin_m, self.safe_clearance_m / 2.0)
-
-        if body_bearing < 0.0 and right_clearance < margin:
-            return self._corridor_return_angle(corridor_body_bearing, 1.0), (
-                "right_boundary_keepout"
-            )
-        if body_bearing > 0.0 and left_clearance < margin:
-            return self._corridor_return_angle(corridor_body_bearing, -1.0), (
-                "left_boundary_keepout"
-            )
-        return body_bearing, None
-
-    def _corridor_return_angle(
-        self,
-        corridor_body_bearing: float,
-        sign: float,
-    ) -> float:
-        angle = max(
-            abs(corridor_body_bearing),
-            self.min_corridor_return_angle_deg,
-        )
-        return clamp(
-            sign * angle,
-            -self.max_relative_bearing_deg,
-            self.max_relative_bearing_deg,
-        )
-
-    def _corridor_clearances(
-        self,
-        center_left_m: float | None,
-        estimated_width_m: float | None,
-    ) -> tuple[float | None, float | None]:
-        if center_left_m is None or estimated_width_m is None:
-            return None, None
-        half_width = estimated_width_m / 2.0
-        return center_left_m + half_width, half_width - center_left_m
-
-    def _scan_direction_for_corridor(
-        self,
-        best_free: float,
-        center_left_m: float | None,
-        estimated_width_m: float | None,
-    ) -> float:
-        left_clearance, right_clearance = self._corridor_clearances(
-            center_left_m,
-            estimated_width_m,
-        )
-        if left_clearance is not None and right_clearance is not None:
-            if left_clearance > right_clearance + 0.25:
-                return 1.0
-            if right_clearance > left_clearance + 0.25:
-                return -1.0
-        if abs(best_free) > 1.0:
-            return 1.0 if best_free > 0.0 else -1.0
-        return 1.0
-
-    def _record_scan_sample(
-        self,
-        front_clearance: float | None,
-        best_free: float,
-        front_obstacle,
-        corridor_body_bearing: float | None,
-        corridor_center_left: float | None,
-        corridor_width: float | None,
-    ) -> None:
-        if front_obstacle is not None:
-            self.scan_obstacle = front_obstacle
-        best_clearance = 0.0
-        if self.lidar_summary is not None:
-            best_clearance = float(
-                self.lidar_summary.get("best_free_clearance_m", 0.0)
-            )
-        self.scan_samples.append(
-            {
-                "front_clearance_m": front_clearance,
-                "best_free_body_deg": best_free,
-                "best_free_clearance_m": best_clearance,
-                "front_obstacle": front_obstacle,
-                "corridor_body_bearing_deg": corridor_body_bearing,
-                "corridor_center_left_m": corridor_center_left,
-                "corridor_width_m": corridor_width,
-            }
-        )
-        self.scan_samples = self.scan_samples[-80:]
-
-    def _choose_bypass_body_bearing(
-        self,
-        fallback_best_free: float,
-        front_obstacle,
-        fallback_corridor_bearing: float | None,
-        fallback_center_left: float | None,
-        fallback_width: float | None,
-    ) -> tuple[float, str]:
-        corridor_bypass = self._corridor_obstacle_bypass_bearing(
-            front_obstacle or self.scan_obstacle,
-            fallback_center_left,
-            fallback_width,
-        )
-        if corridor_bypass is not None:
-            return corridor_bypass
-
-        best = None
-        for sample in self.scan_samples:
-            corridor_bypass = self._corridor_obstacle_bypass_bearing(
-                sample.get("front_obstacle"),
-                sample.get("corridor_center_left_m"),
-                sample.get("corridor_width_m"),
-            )
-            if corridor_bypass is not None:
-                return corridor_bypass
-
-            candidate = float(sample.get("best_free_body_deg", 0.0))
-            if abs(candidate) < self.min_corridor_return_angle_deg:
-                continue
-
-            limited, limit_reason = self._corridor_limited_body_bearing(
-                candidate,
-                sample.get("corridor_body_bearing_deg"),
-                sample.get("corridor_center_left_m"),
-                sample.get("corridor_width_m"),
-            )
-            clearance = float(sample.get("best_free_clearance_m", 0.0))
-            front = sample.get("front_clearance_m")
-            front_score = 0.0 if front is None else min(float(front), 8.0) * 0.15
-            center_left = sample.get("corridor_center_left_m")
-            center_penalty = 0.0 if center_left is None else abs(float(center_left)) * 0.1
-            limit_penalty = 0.35 if limit_reason else 0.0
-            score = min(clearance, 12.0) + front_score - center_penalty - limit_penalty
-            if best is None or score > best[0]:
-                best = (score, limited, limit_reason)
-
-        if best is not None:
-            reason = best[2] or "scan_bypass_selected"
-            return float(best[1]), reason
-
-        limited, limit_reason = self._corridor_limited_body_bearing(
-            fallback_best_free,
-            fallback_corridor_bearing,
-            fallback_center_left,
-            fallback_width,
-        )
-        if abs(limited) >= 1.0:
-            return limited, limit_reason or "scan_bypass_fallback"
-
-        direction = self._scan_direction_for_corridor(
-            fallback_best_free,
-            fallback_center_left,
-            fallback_width,
-        )
-        if fallback_corridor_bearing is None:
-            fallback_corridor_bearing = 0.0
-        return self._corridor_return_angle(
-            fallback_corridor_bearing,
-            direction,
-        ), "scan_bypass_corridor_return"
-
-    def _corridor_obstacle_bypass_bearing(
-        self,
-        obstacle,
-        center_left_m: float | None,
-        estimated_width_m: float | None,
-    ) -> tuple[float, str] | None:
-        if obstacle is None or center_left_m is None or estimated_width_m is None:
-            return None
-        if estimated_width_m <= 0.0:
-            return None
-
-        half_width = estimated_width_m / 2.0
-        boundary_margin = max(
-            self.corridor_keepout_margin_m,
-            self.safe_clearance_m / 2.0,
-        )
-        min_left = center_left_m - half_width + boundary_margin
-        max_left = center_left_m + half_width - boundary_margin
+        min_left = center - half + margin
+        max_left = center + half - margin
         if min_left >= max_left:
             return None
+        return min_left, max_left
 
+    def _nearest_obstacle(self):
+        if self.semantic is None:
+            return None
+        if now_ts() - self.semantic_ts > self.sensor_timeout_s:
+            return None
+
+        nearest = None
+        for buoy in self.semantic.get("buoys", []):
+            if buoy.get("semantic") not in ("obstacle_candidate", "unknown"):
+                continue
+            forward = buoy.get("forward_m")
+            left = buoy.get("left_m")
+            if forward is None or left is None:
+                continue
+            forward = float(forward)
+            left = float(left)
+            if forward < -0.8 or forward > self.avoid_start_distance_m + 1.0:
+                continue
+            if nearest is None or forward < nearest["forward_m"]:
+                nearest = {
+                    "id": buoy.get("id"),
+                    "forward_m": forward,
+                    "left_m": left,
+                }
+        return nearest
+
+    def _obstacle_requires_pass(self, obstacle, corridor) -> bool:
+        if obstacle is None:
+            return False
+        forward = float(obstacle["forward_m"])
+        left = float(obstacle["left_m"])
+        if forward <= -0.2 or forward > self.avoid_start_distance_m:
+            return False
+
+        bounds = self._corridor_bounds(corridor)
+        if bounds is None:
+            return abs(left) <= self.safe_clearance_m
+
+        min_left, max_left = bounds
+        return min_left <= left <= max_left
+
+    def _choose_pass_side(self, obstacle, corridor, best_free: float) -> float:
         obstacle_left = float(obstacle["left_m"])
-        obstacle_forward = float(obstacle["forward_m"])
-        obstacle_margin = max(
-            self.obstacle_pass_margin_m,
-            self.safe_clearance_m / 2.0,
-        )
-        left_gap = max_left - (obstacle_left + obstacle_margin)
-        right_gap = (obstacle_left - obstacle_margin) - min_left
+        bounds = self._corridor_bounds(corridor)
+        if bounds is not None:
+            min_left, max_left = bounds
+            margin = max(self.obstacle_pass_margin_m, self.safe_clearance_m / 2.0)
+            left_gap = max_left - (obstacle_left + margin)
+            right_gap = (obstacle_left - margin) - min_left
+            if left_gap > 0.0 or right_gap > 0.0:
+                return 1.0 if left_gap >= right_gap else -1.0
 
-        if left_gap > 0.0 and left_gap >= right_gap:
-            target_left = (max_left + obstacle_left + obstacle_margin) / 2.0
-            reason = "corridor_bypass_left_of_obstacle"
-        elif right_gap > 0.0:
-            target_left = (min_left + obstacle_left - obstacle_margin) / 2.0
-            reason = "corridor_bypass_right_of_obstacle"
-        else:
-            target_left = clamp(center_left_m, min_left, max_left)
-            reason = "corridor_bypass_center_hold"
+        if abs(best_free) > 1.0:
+            return 1.0 if best_free > 0.0 else -1.0
+        return -1.0 if obstacle_left > 0.0 else 1.0
 
-        lookahead = clamp(
-            obstacle_forward,
-            1.5,
-            max(self.bypass_lookahead_m, 1.5),
-        )
-        body_bearing = math.degrees(math.atan2(target_left, lookahead))
-        return clamp(
-            body_bearing,
+    def _target_left_for_pass(self, obstacle, corridor) -> float:
+        obstacle_left = float(obstacle["left_m"])
+        side = 1.0 if self.pass_side >= 0.0 else -1.0
+        target_left = obstacle_left + side * self.obstacle_pass_margin_m
+        bounds = self._corridor_bounds(corridor)
+        if bounds is not None:
+            target_left = clamp(target_left, bounds[0], bounds[1])
+        return target_left
+
+    def _body_bearing_for_left(self, target_left_m: float, lookahead_m: float) -> float:
+        return math.degrees(math.atan2(target_left_m, max(lookahead_m, 0.5)))
+
+    def _rate_limit_relative(self, relative_bearing: float, timestamp: float) -> float:
+        if self.last_relative_bearing is None or self.last_plan_ts <= 0.0:
+            self.last_relative_bearing = relative_bearing
+            self.last_plan_ts = timestamp
+            return relative_bearing
+
+        dt = max(timestamp - self.last_plan_ts, 1e-3)
+        max_step = max(self.bearing_rate_limit_degps, 1.0) * dt
+        delta = normalize_angle_deg(relative_bearing - self.last_relative_bearing)
+        limited = self.last_relative_bearing + clamp(delta, -max_step, max_step)
+        limited = clamp(
+            normalize_angle_deg(limited),
             -self.max_relative_bearing_deg,
             self.max_relative_bearing_deg,
-        ), reason
+        )
+        self.last_relative_bearing = limited
+        self.last_plan_ts = timestamp
+        return limited
 
     def _publish_plan(
         self,
@@ -490,298 +374,235 @@ class Parkur2PlannerNode(Node):
         speed_limit: float,
         front_clearance: float | None,
         lidar_state: str,
-        corridor_confidence: float,
-        corridor_center_left: float | None,
-        corridor_width: float | None,
-        corridor_limit_reason: str | None,
+        corridor,
+        obstacle,
         reason: str,
     ) -> None:
+        timestamp = now_ts()
+        relative_bearing = clamp(
+            relative_bearing,
+            -self.max_relative_bearing_deg,
+            self.max_relative_bearing_deg,
+        )
+        if mode == "EMERGENCY_STOP":
+            relative_bearing = 0.0
+            self.last_relative_bearing = 0.0
+            self.last_plan_ts = timestamp
+        else:
+            relative_bearing = self._rate_limit_relative(relative_bearing, timestamp)
+
         safe_bearing = self._absolute_from_relative(relative_bearing)
         self.safe_bearing_pub.publish(Float32(data=float(safe_bearing)))
-        self.speed_limit_pub.publish(Float32(data=float(speed_limit)))
+        self.speed_limit_pub.publish(Float32(data=float(max(0.0, speed_limit))))
         self.status_pub.publish(
             String(
                 data=to_json(
                     {
-                        "timestamp": now_ts(),
+                        "timestamp": timestamp,
                         "mode": mode,
                         "safe_bearing_deg": safe_bearing,
                         "relative_bearing_deg": relative_bearing,
                         "speed_limit_mps": speed_limit,
                         "front_clearance_m": front_clearance,
                         "lidar_state": lidar_state,
-                        "corridor_confidence": corridor_confidence,
-                        "corridor_center_left_m": corridor_center_left,
-                        "corridor_width_m": corridor_width,
-                        "corridor_limit_reason": corridor_limit_reason,
-                        "scan_active": self.scan_active,
-                        "scan_sample_count": len(self.scan_samples),
-                        "bypass_body_bearing_deg": self.bypass_body_bearing,
+                        "corridor_confidence": None
+                        if corridor is None
+                        else corridor["confidence"],
+                        "corridor_center_left_m": None
+                        if corridor is None
+                        else corridor["center_left_m"],
+                        "corridor_width_m": None
+                        if corridor is None
+                        else corridor["width_m"],
+                        "corridor_reason": None
+                        if corridor is None
+                        else corridor["reason"],
+                        "obstacle_id": None if obstacle is None else obstacle["id"],
+                        "obstacle_forward_m": None
+                        if obstacle is None
+                        else obstacle["forward_m"],
+                        "obstacle_left_m": None
+                        if obstacle is None
+                        else obstacle["left_m"],
+                        "pass_side": self.pass_side,
+                        "target_left_m": self.target_left_m,
                         "reason": reason,
                     }
                 )
             )
         )
 
+    def _reset_pass(self) -> None:
+        self.pass_side = 0.0
+        self.pass_started_ts = 0.0
+        self.pass_last_obstacle_ts = 0.0
+        self.active_obstacle_id = None
+        self.target_left_m = 0.0
+
     def loop(self) -> None:
         if self.heading_deg is None or self.target_bearing_deg is None:
             return
 
         lidar_state, front_clearance, best_free = self._lidar_state()
-        (
-            corridor_body_bearing,
-            corridor_confidence,
-            corridor_reason,
-            corridor_center_left,
-            corridor_width,
-        ) = self._corridor_state()
-        corridor_bearing = None
-        if corridor_body_bearing is not None:
-            corridor_bearing = self._nav_relative_from_body_left(
-                corridor_body_bearing
-            )
-        front_obstacle = self._nearest_front_obstacle()
-        semantic_front_obstacle = front_obstacle is not None
-        corridor_limit_reason = None
-        now = now_ts()
-        near_obstacle = lidar_state in ("avoid", "danger") or semantic_front_obstacle
+        corridor = self._corridor_state()
+        obstacle = self._nearest_obstacle()
+        timestamp = now_ts()
+        target_relative = self._target_relative_bearing()
 
-        # Clear expired bypass so old value doesn't linger in logs
-        if self.bypass_body_bearing is not None and self.bypass_until_ts <= now:
-            self.bypass_body_bearing = None
-
-        if self.scan_active:
-            self._record_scan_sample(
-                front_clearance,
-                best_free,
-                front_obstacle,
-                corridor_body_bearing,
-                corridor_center_left,
-                corridor_width,
-            )
-            if now - self.scan_started_ts < self.scan_duration_s:
-                if self.scan_target_bearing_deg is None:
-                    body_bearing = self.scan_direction * self.scan_spin_angle_deg
-                    self.scan_target_bearing_deg = (
-                        self.heading_deg
-                        + self._nav_relative_from_body_left(body_bearing)
-                    ) % 360.0
-                self._publish_plan(
-                    "SCAN_OBSTACLE",
-                    normalize_angle_deg(
-                        self.scan_target_bearing_deg - self.heading_deg
-                    ),
-                    0.0,
-                    front_clearance,
-                    lidar_state,
-                    corridor_confidence,
-                    corridor_center_left,
-                    corridor_width,
-                    None,
-                    "scan_before_bypass",
-                )
-                return
-
-            self.scan_active = False
-            self.last_scan_completed_ts = now
-            if corridor_body_bearing is None and (
-                near_obstacle or self.scan_obstacle is not None
-            ):
-                self.bypass_body_bearing = None
-                self.bypass_until_ts = 0.0
-                self._publish_plan(
-                    "STOP",
-                    clamp(
-                        self._nav_relative_from_body_left(best_free),
-                        -self.max_relative_bearing_deg,
-                        self.max_relative_bearing_deg,
-                    ),
-                    0.0,
-                    front_clearance,
-                    lidar_state,
-                    corridor_confidence,
-                    corridor_center_left,
-                    corridor_width,
-                    None,
-                    "corridor_missing_after_scan",
-                )
-                return
-
-            self.bypass_body_bearing, corridor_limit_reason = (
-                self._choose_bypass_body_bearing(
-                    best_free,
-                    front_obstacle,
-                    corridor_body_bearing,
-                    corridor_center_left,
-                    corridor_width,
-                )
-            )
-            self.bypass_until_ts = now + self.bypass_hold_s
-
-        if (
-            self.scan_before_bypass
-            and near_obstacle
-            and self.bypass_until_ts <= now
-            and now - self.last_scan_completed_ts >= self.scan_cooldown_s
-        ):
-            self.scan_active = True
-            self.scan_started_ts = now
-            self.scan_samples = []
-            self.scan_direction = self._scan_direction_for_corridor(
-                best_free,
-                corridor_center_left,
-                corridor_width,
-            )
-            body_bearing = self.scan_direction * self.scan_spin_angle_deg
-            self.scan_target_bearing_deg = (
-                self.heading_deg + self._nav_relative_from_body_left(body_bearing)
-            ) % 360.0
-            self.scan_obstacle = front_obstacle
-            self._record_scan_sample(
-                front_clearance,
-                best_free,
-                front_obstacle,
-                corridor_body_bearing,
-                corridor_center_left,
-                corridor_width,
-            )
+        if lidar_state in ("missing", "timeout"):
+            self.mode = "EMERGENCY_STOP"
             self._publish_plan(
-                "SCAN_OBSTACLE",
-                normalize_angle_deg(
-                    self.scan_target_bearing_deg - self.heading_deg
-                ),
+                self.mode,
+                0.0,
                 0.0,
                 front_clearance,
                 lidar_state,
-                corridor_confidence,
-                corridor_center_left,
-                corridor_width,
-                None,
-                "scan_before_bypass",
+                corridor,
+                obstacle,
+                f"lidar_{lidar_state}",
             )
             return
 
-        if near_obstacle and corridor_body_bearing is None:
+        if lidar_state == "emergency":
+            self.mode = "EMERGENCY_STOP"
             self._publish_plan(
-                "STOP",
-                clamp(
-                    self._nav_relative_from_body_left(best_free),
-                    -self.max_relative_bearing_deg,
-                    self.max_relative_bearing_deg,
-                ),
+                self.mode,
+                0.0,
                 0.0,
                 front_clearance,
                 lidar_state,
-                corridor_confidence,
-                corridor_center_left,
-                corridor_width,
-                None,
-                "corridor_missing_near_obstacle",
+                corridor,
+                obstacle,
+                "front_emergency_stop",
             )
             return
 
-        if self.require_corridor_for_motion and corridor_body_bearing is None:
-            self._publish_plan(
-                "SEARCH_CORRIDOR",
-                self.corridor_search_angle_deg,
-                0.0,
-                front_clearance,
-                lidar_state,
-                corridor_confidence,
-                corridor_center_left,
-                corridor_width,
-                None,
-                "corridor_required_for_motion",
-            )
-            return
+        if self.mode == "PASS_COMMITTED":
+            if obstacle is not None:
+                self.pass_last_obstacle_ts = timestamp
 
-        mode = "WAYPOINT"
-        relative_bearing = normalize_angle_deg(
-            self.target_bearing_deg - self.heading_deg
-        )
-        speed_limit = self.max_speed_mps
-        reason = "target_bearing"
-
-        if self.bypass_body_bearing is not None and self.bypass_until_ts > now:
-            # Early exit if obstacle has been cleared and front is safe
-            if front_obstacle is None and lidar_state not in ("danger", "avoid"):
-                self.bypass_until_ts = now
+            pass_age = timestamp - self.pass_started_ts
+            lost_age = timestamp - self.pass_last_obstacle_ts
+            obstacle_behind = obstacle is not None and obstacle["forward_m"] < -0.4
+            obstacle_lost = obstacle is None and lost_age > self.pass_release_after_lost_s
+            if pass_age >= self.pass_min_duration_s and (obstacle_behind or obstacle_lost):
+                self.mode = "RETURN_TO_CENTER"
             else:
-                mode = "BYPASS"
-                body_bearing, corridor_limit_reason = (
-                    self._corridor_limited_body_bearing(
-                        self.bypass_body_bearing,
-                        corridor_body_bearing,
-                        corridor_center_left,
-                        corridor_width,
+                if obstacle is not None:
+                    self.target_left_m = self._target_left_for_pass(obstacle, corridor)
+                body_bearing = self._body_bearing_for_left(
+                    self.target_left_m,
+                    self.pass_lookahead_m,
+                )
+                relative = self._nav_relative_from_body_left(
+                    clamp(body_bearing, -self.max_pass_bearing_deg, self.max_pass_bearing_deg)
+                )
+                speed = min(self.approach_speed_mps, self.max_speed_mps)
+                if lidar_state == "danger":
+                    speed = min(speed, 0.08)
+                self._publish_plan(
+                    self.mode,
+                    relative,
+                    speed,
+                    front_clearance,
+                    lidar_state,
+                    corridor,
+                    obstacle,
+                    "committed_pass",
+                )
+                return
+
+        if self.mode == "RETURN_TO_CENTER":
+            if self._obstacle_requires_pass(obstacle, corridor):
+                self.mode = "PASS_COMMITTED"
+                self.pass_started_ts = timestamp
+                self.pass_last_obstacle_ts = timestamp
+                self.active_obstacle_id = obstacle["id"]
+                self.target_left_m = self._target_left_for_pass(obstacle, corridor)
+            else:
+                if corridor is not None:
+                    body_bearing = self._body_bearing_for_left(
+                        float(corridor["center_left_m"]),
+                        self.return_lookahead_m,
                     )
-                )
-                relative_bearing = clamp(
-                    self._nav_relative_from_body_left(body_bearing),
-                    -self.max_relative_bearing_deg,
-                    self.max_relative_bearing_deg,
-                )
-                speed_limit = 0.0 if lidar_state == "danger" else self.approach_speed_mps
-                reason = corridor_limit_reason or "scan_bypass"
-        elif lidar_state in ("missing", "timeout"):
-            mode = "STOP"
-            relative_bearing = 0.0
-            speed_limit = 0.0
-            reason = f"lidar_{lidar_state}"
-        elif lidar_state == "danger":
-            mode = "STOP"
-            body_bearing, corridor_limit_reason = (
-                self._corridor_limited_body_bearing(
-                    best_free,
-                    corridor_body_bearing,
-                    corridor_center_left,
-                    corridor_width,
-                )
+                    relative = self._nav_relative_from_body_left(
+                        clamp(
+                            body_bearing,
+                            -self.max_return_bearing_deg,
+                            self.max_return_bearing_deg,
+                        )
+                    )
+                    if abs(float(corridor["center_left_m"])) < 0.35:
+                        self.mode = "CRUISE"
+                        self._reset_pass()
+                    self._publish_plan(
+                        "RETURN_TO_CENTER",
+                        relative,
+                        min(self.approach_speed_mps, self.max_speed_mps),
+                        front_clearance,
+                        lidar_state,
+                        corridor,
+                        obstacle,
+                        "return_to_corridor_center",
+                    )
+                    return
+
+                self.mode = "CRUISE"
+                self._reset_pass()
+
+        if self._obstacle_requires_pass(obstacle, corridor):
+            self.mode = "PASS_COMMITTED"
+            self.pass_side = self._choose_pass_side(obstacle, corridor, best_free)
+            self.pass_started_ts = timestamp
+            self.pass_last_obstacle_ts = timestamp
+            self.active_obstacle_id = obstacle["id"]
+            self.target_left_m = self._target_left_for_pass(obstacle, corridor)
+            body_bearing = self._body_bearing_for_left(
+                self.target_left_m,
+                self.pass_lookahead_m,
             )
-            relative_bearing = clamp(
-                self._nav_relative_from_body_left(body_bearing),
-                -self.max_relative_bearing_deg,
-                self.max_relative_bearing_deg,
+            relative = self._nav_relative_from_body_left(
+                clamp(body_bearing, -self.max_pass_bearing_deg, self.max_pass_bearing_deg)
             )
-            speed_limit = 0.0
-            reason = corridor_limit_reason or "front_danger_turn_in_place"
-        elif lidar_state == "avoid" or semantic_front_obstacle:
-            mode = "AVOID"
-            body_bearing, corridor_limit_reason = (
-                self._corridor_limited_body_bearing(
-                    best_free,
-                    corridor_body_bearing,
-                    corridor_center_left,
-                    corridor_width,
-                )
+            self._publish_plan(
+                self.mode,
+                relative,
+                min(self.approach_speed_mps, self.max_speed_mps),
+                front_clearance,
+                lidar_state,
+                corridor,
+                obstacle,
+                "plan_pass",
             )
-            relative_bearing = clamp(
-                self._nav_relative_from_body_left(body_bearing),
-                -self.max_relative_bearing_deg,
-                self.max_relative_bearing_deg,
+            return
+
+        self.mode = "CRUISE"
+        self._reset_pass()
+        if corridor is not None:
+            relative = self._nav_relative_from_body_left(
+                float(corridor["body_bearing_deg"])
             )
-            speed_limit = self.approach_speed_mps
-            reason = corridor_limit_reason or (
-                "local_obstacle_avoidance"
-                if lidar_state == "avoid"
-                else "semantic_front_obstacle"
-            )
-        elif corridor_bearing is not None:
-            mode = "CORRIDOR_TRACK"
-            relative_bearing = corridor_bearing
-            speed_limit = self.max_speed_mps
-            reason = corridor_reason
+            reason = corridor["reason"]
+            speed = self.max_speed_mps
+        else:
+            relative = target_relative
+            reason = "waypoint_no_corridor"
+            speed = min(self.approach_speed_mps, self.max_speed_mps)
+
+        if lidar_state in ("danger", "avoid"):
+            # Without a semantic obstacle inside the corridor, LiDAR only slows
+            # the boat down. It must not become the primary steering source.
+            speed = min(speed, self.approach_speed_mps)
+            reason = f"{reason}_lidar_slowdown"
 
         self._publish_plan(
-            mode,
-            relative_bearing,
-            speed_limit,
+            self.mode,
+            relative,
+            speed,
             front_clearance,
             lidar_state,
-            corridor_confidence,
-            corridor_center_left,
-            corridor_width,
-            corridor_limit_reason,
+            corridor,
+            obstacle,
             reason,
         )
 
