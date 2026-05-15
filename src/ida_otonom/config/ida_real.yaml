@@ -116,14 +116,20 @@ semantic_buoy_classifier_node:
 
 corridor_tracker_node:
   ros__parameters:
-    lookahead_m: 4.0
-    expected_corridor_width_m: 4.0
+    lookahead_m: 3.0
+    expected_corridor_width_m: 8.82
     vehicle_width_m: 1.10
     side_safety_margin_m: 0.35
     min_gate_width_m: 1.80
     max_boundary_bearing_deg: 70.0
     min_boundary_range_m: 0.4
     max_boundary_range_m: 8.0
+    center_smoothing_alpha: 0.25
+    max_center_step_m: 0.6
+    obstacle_avoidance_enabled: true
+    obstacle_avoidance_range_m: 8.0
+    obstacle_avoidance_margin_m: 0.80
+    obstacle_max_offset_m: 1.50
 
 parkur2_planner_node:
   ros__parameters:
@@ -135,3 +141,12 @@ parkur2_planner_node:
     max_relative_bearing_deg: 55.0
     corridor_min_confidence: 0.55
     sensor_timeout_s: 1.0
+    scan_before_bypass: true
+    scan_duration_s: 2.0
+    scan_spin_angle_deg: 65.0
+    scan_cooldown_s: 2.0
+    bypass_hold_s: 3.0
+    obstacle_pass_margin_m: 1.10
+    bypass_lookahead_m: 3.0
+    require_corridor_for_motion: true
+    corridor_search_angle_deg: 35.0

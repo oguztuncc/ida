@@ -19,6 +19,9 @@ class SimVisualizerNode(Node):
         self.declare_parameter("trail_length", 2500)
         self.declare_parameter("window_title", "IDA Simulation")
         self.declare_parameter("draw_lidar_rays", True)
+        self.declare_parameter("initial_zoom", 1.0)
+        self.declare_parameter("min_zoom", 0.5)
+        self.declare_parameter("max_zoom", 8.0)
 
         self.width = int(self.get_parameter("window_width").value)
         self.height = int(self.get_parameter("window_height").value)
@@ -27,6 +30,18 @@ class SimVisualizerNode(Node):
         self.window_title = str(self.get_parameter("window_title").value)
         self.draw_lidar_rays = bool(
             self.get_parameter("draw_lidar_rays").value
+        )
+        self.min_zoom = max(0.1, float(self.get_parameter("min_zoom").value))
+        self.max_zoom = max(
+            self.min_zoom,
+            float(self.get_parameter("max_zoom").value),
+        )
+        self.zoom_factor = max(
+            self.min_zoom,
+            min(
+                self.max_zoom,
+                float(self.get_parameter("initial_zoom").value),
+            ),
         )
 
         self.current_lat = None
@@ -42,9 +57,15 @@ class SimVisualizerNode(Node):
         self.planner_status = {}
         self.lidar_summary = {}
         self.latest_scan = None
+        self.requested_time_scale = None
         self.origin_lat = None
         self.origin_lon = None
         self.closed = False
+        self.pan_east_m = 0.0
+        self.pan_north_m = 0.0
+        self.follow_boat = False
+        self.drag_origin = None
+        self.last_scale = 1.0
 
         self.create_subscription(
             NavSatFix,
@@ -107,6 +128,11 @@ class SimVisualizerNode(Node):
             10,
         )
         self.create_subscription(LaserScan, "/scan", self.scan_cb, 10)
+        self.time_scale_pub = self.create_publisher(
+            Float32,
+            "/sim/time_scale",
+            10,
+        )
 
         self.root = tk.Tk()
         self.root.title(self.window_title)
@@ -119,6 +145,111 @@ class SimVisualizerNode(Node):
         )
         self.canvas.pack(fill=tk.BOTH, expand=True)
         self.root.protocol("WM_DELETE_WINDOW", self.close)
+        self._bind_view_controls()
+
+    def _bind_view_controls(self) -> None:
+        self.root.bind("<MouseWheel>", self._mouse_wheel)
+        self.root.bind("<Button-4>", self._mouse_wheel)
+        self.root.bind("<Button-5>", self._mouse_wheel)
+        self.root.bind("<Key-plus>", lambda _event: self._zoom(1.15))
+        self.root.bind("<Key-equal>", lambda _event: self._zoom(1.15))
+        self.root.bind("<Key-KP_Add>", lambda _event: self._zoom(1.15))
+        self.root.bind("<Key-minus>", lambda _event: self._zoom(1.0 / 1.15))
+        self.root.bind(
+            "<Key-KP_Subtract>",
+            lambda _event: self._zoom(1.0 / 1.15),
+        )
+        self.root.bind("<Key-0>", lambda _event: self._reset_view())
+        self.root.bind(
+            "<Key-bracketleft>",
+            lambda _event: self._adjust_time_scale(0.5),
+        )
+        self.root.bind(
+            "<Key-bracketright>",
+            lambda _event: self._adjust_time_scale(2.0),
+        )
+        self.root.bind("<Key-1>", lambda _event: self._set_time_scale(1.0))
+        self.root.bind("<Key-f>", lambda _event: self._toggle_follow())
+        self.root.bind("<Key-F>", lambda _event: self._toggle_follow())
+        self.root.bind(
+            "<Left>",
+            lambda _event: self._pan(-self._pan_step_m(), 0.0),
+        )
+        self.root.bind(
+            "<Right>",
+            lambda _event: self._pan(self._pan_step_m(), 0.0),
+        )
+        self.root.bind("<Up>", lambda _event: self._pan(0.0, self._pan_step_m()))
+        self.root.bind("<Down>", lambda _event: self._pan(0.0, -self._pan_step_m()))
+        self.root.bind(
+            "<Key-a>",
+            lambda _event: self._pan(-self._pan_step_m(), 0.0),
+        )
+        self.root.bind(
+            "<Key-d>",
+            lambda _event: self._pan(self._pan_step_m(), 0.0),
+        )
+        self.root.bind("<Key-w>", lambda _event: self._pan(0.0, self._pan_step_m()))
+        self.root.bind("<Key-s>", lambda _event: self._pan(0.0, -self._pan_step_m()))
+        self.canvas.bind("<ButtonPress-1>", self._start_drag)
+        self.canvas.bind("<B1-Motion>", self._drag_view)
+        self.canvas.focus_set()
+
+    def _pan_step_m(self) -> float:
+        return max(2.0, 12.0 / max(self.zoom_factor, 0.1))
+
+    def _zoom(self, factor: float) -> None:
+        self.zoom_factor = max(
+            self.min_zoom,
+            min(self.max_zoom, self.zoom_factor * factor),
+        )
+
+    def _mouse_wheel(self, event) -> None:
+        if getattr(event, "num", None) == 4 or getattr(event, "delta", 0) > 0:
+            self._zoom(1.15)
+        else:
+            self._zoom(1.0 / 1.15)
+
+    def _pan(self, east_m: float, north_m: float) -> None:
+        self.pan_east_m += east_m
+        self.pan_north_m += north_m
+
+    def _reset_view(self) -> None:
+        self.zoom_factor = 1.0
+        self.pan_east_m = 0.0
+        self.pan_north_m = 0.0
+        self.follow_boat = False
+
+    def _toggle_follow(self) -> None:
+        self.follow_boat = not self.follow_boat
+
+    def _current_time_scale(self) -> float:
+        if self.requested_time_scale is not None:
+            return self.requested_time_scale
+        try:
+            return float(self.sim_world.get("time_scale", 1.0))
+        except Exception:
+            return 1.0
+
+    def _adjust_time_scale(self, factor: float) -> None:
+        self._set_time_scale(self._current_time_scale() * factor)
+
+    def _set_time_scale(self, value: float) -> None:
+        self.requested_time_scale = max(0.1, min(20.0, float(value)))
+        self.time_scale_pub.publish(Float32(data=self.requested_time_scale))
+
+    def _start_drag(self, event) -> None:
+        self.drag_origin = (event.x, event.y)
+
+    def _drag_view(self, event) -> None:
+        if self.drag_origin is None:
+            return
+        dx = event.x - self.drag_origin[0]
+        dy = event.y - self.drag_origin[1]
+        scale = max(self.last_scale, 1e-6)
+        self.pan_east_m -= dx / scale
+        self.pan_north_m += dy / scale
+        self.drag_origin = (event.x, event.y)
 
     def gps_cb(self, msg: NavSatFix) -> None:
         self.current_lat = float(msg.latitude)
@@ -214,8 +345,16 @@ class SimVisualizerNode(Node):
             ):
                 forward = distance * math.cos(angle)
                 left = distance * math.sin(angle)
-                east = boat_east + forward * math.sin(heading) - left * math.cos(heading)
-                north = boat_north + forward * math.cos(heading) + left * math.sin(heading)
+                east = (
+                    boat_east
+                    + forward * math.sin(heading)
+                    - left * math.cos(heading)
+                )
+                north = (
+                    boat_north
+                    + forward * math.cos(heading)
+                    + left * math.sin(heading)
+                )
                 points.append((east, north))
             angle += self.latest_scan.angle_increment
         return points
@@ -233,7 +372,7 @@ class SimVisualizerNode(Node):
 
         canvas_w = max(self.canvas.winfo_width(), 1)
         canvas_h = max(self.canvas.winfo_height(), 1)
-        status_h = 155
+        status_h = 180
         map_h = max(canvas_h - status_h, 1)
         margin = 55
 
@@ -249,13 +388,26 @@ class SimVisualizerNode(Node):
         span_y = max(max_y - min_y, 20.0)
         mid_x = (min_x + max_x) / 2.0
         mid_y = (min_y + max_y) / 2.0
-        min_x = mid_x - span_x / 2.0
-        max_y = mid_y + span_y / 2.0
-
+        usable_w = max(canvas_w - 2 * margin, 1.0)
+        usable_h = max(map_h - 2 * margin, 1.0)
         scale = min(
-            (canvas_w - 2 * margin) / span_x,
-            (map_h - 2 * margin) / span_y,
+            usable_w / span_x,
+            usable_h / span_y,
         )
+        scale = max(scale * self.zoom_factor, 1e-6)
+        if (
+            self.follow_boat
+            and self.current_lat is not None
+            and self.current_lon is not None
+        ):
+            mid_x, mid_y = self._project(self.current_lat, self.current_lon)
+        mid_x += self.pan_east_m
+        mid_y += self.pan_north_m
+        view_span_x = usable_w / scale
+        view_span_y = usable_h / scale
+        min_x = mid_x - view_span_x / 2.0
+        max_y = mid_y + view_span_y / 2.0
+        self.last_scale = scale
 
         def to_screen(east_m: float, north_m: float) -> tuple[float, float]:
             return (
@@ -498,19 +650,25 @@ class SimVisualizerNode(Node):
             self.lidar_summary.get("front_clearance_m"),
         )
         sim_boat = self.sim_world.get("boat", {})
+        sim_time_scale = self.sim_world.get("time_scale", 1.0)
         closest_clearance = sim_boat.get("closest_clearance_m")
         collision = bool(sim_boat.get("collision", False))
 
         left_lines = [
             f"Mission: started={mission_started} completed={mission_completed}",
-            f"Active waypoint: {self.active_waypoint_index}/{max(len(self.waypoints) - 1, 0)}",
+            "Active waypoint: "
+            f"{self.active_waypoint_index}/{max(len(self.waypoints) - 1, 0)}",
             self._format_gps_line(),
             f"LiDAR: {lidar_state} front={self._fmt(front_clearance)} m",
             f"Closest object: {self._fmt(closest_clearance)} m collision={collision}",
+            f"View: zoom={self.zoom_factor:.1f}x "
+            f"follow={self.follow_boat} sim={self._fmt(sim_time_scale)}x",
         ]
         right_lines = [
             f"Heading: {self.heading_deg:.1f} deg",
-            f"Target: {self._fmt(target_distance)} m @ {self._fmt(target_bearing)} deg",
+            "Target: "
+            f"{self._fmt(target_distance)} m @ "
+            f"{self._fmt(target_bearing)} deg",
             f"Command: speed={speed:.2f} m/s yaw={yaw_rate:.2f} rad/s",
             f"Planner: {planner_mode} ({planner_reason})",
         ]
@@ -539,7 +697,10 @@ class SimVisualizerNode(Node):
         self.canvas.create_text(
             canvas_w - 18,
             canvas_h - 18,
-            text="Autonomous view - close window to stop visualizer",
+            text=(
+                "Wheel/+/- zoom, drag/arrows/WASD pan, "
+                "F follow, 0 reset, [/]/1 sim speed"
+            ),
             fill="#7ec8ff",
             anchor="e",
             font=("Sans", 10),
