@@ -153,9 +153,10 @@ class BuoyDetectorNode(Node):
         return median
 
     def _bearing_for_pixel(self, cx_px: float, image_width: int) -> float:
+        # Positive bearing means port/left to match semantic left_m fields.
         if self.fx is not None and self.cx is not None:
-            return math.degrees(math.atan2(cx_px - self.cx, self.fx))
-        normalized = (cx_px - image_width / 2.0) / max(image_width, 1)
+            return math.degrees(math.atan2(self.cx - cx_px, self.fx))
+        normalized = (image_width / 2.0 - cx_px) / max(image_width, 1)
         return normalized * self.assumed_horizontal_fov_deg
 
     def _mean_hsv(

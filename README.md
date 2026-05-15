@@ -1,10 +1,10 @@
 # TEKNOFEST IDA Autonomy
 
 Bu repo, TEKNOFEST İnsansız Deniz Aracı projesi için ROS 2 Humble tabanlı
-otonomi paketini içerir. Mevcut sistem Parkur-1 için GPS ve heading tabanlı
-waypoint takibini simülasyonda çalıştırır. Pixhawk, kamera, depth, lidar, YKI
-ve kill-chain entegrasyonları güvenli tarafta tutulmuştur; gerçek donanımda
-kullanılmadan önce tek tek doğrulanmalıdır.
+otonomi paketini içerir. Mevcut sistem Parkur-1 için GPS waypoint hedeflerini
+korurken yan dubalardan hesaplanan koridor merkezini takip eder. Pixhawk,
+kamera, depth, lidar, YKI ve kill-chain entegrasyonları güvenli tarafta
+tutulmuştur; gerçek donanımda kullanılmadan önce tek tek doğrulanmalıdır.
 
 ## Mevcut Durum
 
@@ -15,7 +15,8 @@ kullanılmadan önce tek tek doğrulanmalıdır.
   bittiyse motor komutunu sıfırlar.
 - `safety_node`, latched `/safety/kill` bilgisine göre `/control/cmd_vel`
   komutunu `/control/cmd_vel_safe` çıkışına geçirir veya keser.
-- `sim_gps_node` Parkur-1 için basit GPS ve pusula simülasyonu sağlar.
+- `sim_gps_node` Parkur-1 için basit GPS ve pusula simülasyonu sağlar; duba
+  koridor simülasyonunda sentetik GPS, LiDAR ve duba algıları kullanılır.
 - `logger_node` yarış telemetrisini ayarlanabilir bir klasöre CSV olarak yazar.
 - `local_costmap_node` lidar scan verisinden `/local_costmap` yayınlar ve 1 Hz
   obstacle map CSV kaydı alır.
@@ -45,7 +46,7 @@ colcon build --symlink-install --packages-select ida_otonom
 source install/setup.bash
 ```
 
-## Parkur-1 Simülasyon
+## Parkur-1 Duba Koridor Simülasyonu
 
 `ros2 launch` komutu yoksa önce Jazzy launch aracı kurulmalıdır:
 
@@ -57,6 +58,18 @@ sudo apt install ros-jazzy-ros2launch
 ros2 launch ida_otonom parkur1_sim.launch.py
 ```
 
+Varsayılan çalışma sadece waypoint çizgisine gitmez. Sentetik yan dubalar
+üretilir, `corridor_tracker_node` sol/sağ duba dizilerinden ağırlıklı orta hat
+hesaplar ve planner bu orta hattı waypoint bearing'inin önüne alır. Dubalar
+simülasyonda küçük konum sapmalarıyla dizilir; amaç mükemmel gate eşleşmesi
+aramadan mümkün olduğunca koridor ortasında kalmaktır.
+
+Eski sadece-waypoint Parkur-1 simülasyonuna dönmek için:
+
+```bash
+ros2 launch ida_otonom parkur1_sim.launch.py enable_corridor_planning:=false
+```
+
 Simülasyon varsayılan olarak turtle-benzeri görsel arayüzü de açar. Başsız
 ortamda kapatmak için:
 
@@ -64,11 +77,15 @@ ortamda kapatmak için:
 ros2 launch ida_otonom parkur1_sim.launch.py enable_visualizer:=false
 ```
 
+Görsel arayüzde mouse wheel veya `+/-` zoom, sürükleme/oklar/WASD pan, `F`
+tekneyi takip, `0` görünümü resetler.
+
 Kullanışlı launch argument örnekleri:
 
 ```bash
 ros2 launch ida_otonom parkur1_sim.launch.py \
   mission_file:=/path/to/mission.json \
+  config_file:=/path/to/parkur1_sim.yaml \
   arrival_radius_m:=3.0 \
   enable_visualizer:=true \
   log_dir:=/tmp/ida_otonom_logs \
