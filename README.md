@@ -46,6 +46,17 @@ colcon build --symlink-install --packages-select ida_otonom
 source install/setup.bash
 ```
 
+Kod değişikliğinden sonra yeni parametrelerin ve launch dosyalarının package
+share altına kopyalanması için build ve `source install/setup.bash` adımı tekrar
+yapılmalıdır.
+
+Simülasyon launch komutları için her yeni terminalde workspace ortamı
+source edilmelidir:
+
+```bash
+source install/setup.bash
+```
+
 ## Parkur-1 Duba Koridor Simülasyonu
 
 `ros2 launch` komutu yoksa önce Jazzy launch aracı kurulmalıdır:
@@ -78,7 +89,8 @@ ros2 launch ida_otonom parkur1_sim.launch.py enable_visualizer:=false
 ```
 
 Görsel arayüzde mouse wheel veya `+/-` zoom, sürükleme/oklar/WASD pan, `F`
-tekneyi takip, `0` görünümü resetler.
+tekneyi takip, `0` görünümü resetler. Simülasyon hızını değiştirmek için `]`
+hızlandırır, `[` yavaşlatır, `1` tekrar `1.0x` yapar.
 
 Kullanışlı launch argument örnekleri:
 
@@ -107,11 +119,61 @@ LiDAR, semantic corridor, planner, controller ve safety zinciri kullanılır.
 ros2 launch ida_otonom parkur2_sim.launch.py
 ```
 
+Bu komut varsayılan olarak şu bileşenleri birlikte başlatır:
+
+- `parkur2_sim_node`: sentetik tekne, GPS, pusula, LiDAR ve duba/engel dünyası.
+- `mission_manager_node`: `missions/parkur2_sim.json` görevini yükler.
+- `gps_guidance_node`: aktif waypoint bearing ve mesafesini üretir.
+- `lidar_processor_node`: `/scan` verisinden özet güvenlik bilgisi çıkarır.
+- `course_memory_node` ve `semantic_buoy_classifier_node`: sentetik duba
+  algılarını course/obstacle olarak sınıflandırır.
+- `corridor_tracker_node`: koridor merkezini ve genişliğini tahmin eder.
+- `parkur2_planner_node`: koridor takibi ve obstacle pass state machine kararını
+  üretir.
+- `controller_node` ve `safety_node`: komutu `/control/cmd_vel_safe` üzerinden
+  simülasyon teknesine uygular.
+- `sim_visualizer_node`: harita, duba, engel, rota ve planner durumunu gösterir.
+
 Başsız çalıştırma örneği:
 
 ```bash
 ros2 launch ida_otonom parkur2_sim.launch.py enable_visualizer:=false
 ```
+
+Log ve costmap kaydını kapatmak için:
+
+```bash
+ros2 launch ida_otonom parkur2_sim.launch.py \
+  enable_logger:=false \
+  enable_costmap_logger:=false
+```
+
+Farklı config veya görev dosyasıyla çalıştırma:
+
+```bash
+ros2 launch ida_otonom parkur2_sim.launch.py \
+  config_file:=/path/to/parkur2_sim.yaml \
+  mission_file:=/path/to/parkur2_sim.json
+```
+
+Görsel arayüz kısayolları:
+
+- Mouse wheel veya `+/-`: zoom.
+- Sürükleme, oklar veya WASD: haritada pan.
+- `F`: tekneyi takip modunu aç/kapat.
+- `0`: görünümü resetle.
+- `]`: simülasyonu hızlandır.
+- `[`: simülasyonu yavaşlat.
+- `1`: simülasyon hızını `1.0x` yap.
+
+`time_scale` notu:
+
+Simülasyon hızı `parkur2_sim_node` içinde fizik adımını büyütür. Varsayılan
+`update_rate_hz: 20.0` olduğu için normal zaman adımı `0.05 s`'dir. `4x` hızda
+efektif adım `0.20 s`, `8x` hızda `0.40 s` olur. Büyük adımlar engel algısı,
+controller tepkisi ve state machine geçişlerinde gerçekçi olmayan sıçramalara
+neden olabilir. Algoritma doğrulamada `1x-4x` aralığı önerilir; `8x` ve üzeri
+fizik/algı davranışını bozabilir.
 
 Önemli simülasyon topicleri:
 
@@ -119,8 +181,33 @@ ros2 launch ida_otonom parkur2_sim.launch.py enable_visualizer:=false
 - `/perception/lidar_summary`: front/left/right clearance ve en uygun kaçış açısı.
 - `/local_costmap`: LiDAR'dan üretilen lokal occupancy grid.
 - `/perception/buoy_detections`: sentetik parkur ve obstacle buoy detection'ları.
-- `/planner/status`: `CORRIDOR_TRACK`, `AVOID`, `STOP` ve karar nedeni.
+- `/planner/status`: `CRUISE`, `PASS_COMMITTED`, `RETURN_TO_CENTER`,
+  `EMERGENCY_STOP` ve karar nedeni.
 - `/sim/world`: görselleştirici için dünya ve obstacle metadata.
+
+Parkur-2 simülasyonunda beklenen planner akışı:
+
+```text
+CRUISE -> PASS_COMMITTED -> RETURN_TO_CENTER -> CRUISE
+```
+
+Debug için özellikle `/planner/status` alanları izlenmelidir:
+
+- `mode`: planner state.
+- `reason`: karar nedeni.
+- `pass_side`: engeli soldan (`+1`) veya sağdan (`-1`) geçme kararı.
+- `target_left_m`: takip edilen lateral hedef.
+- `obstacle_forward_m` ve `obstacle_left_m`: engelin tekne gövdesine göre konumu.
+- `corridor_reason`: anlık koridor veya kısa süreli corridor coast durumu.
+
+Örnek topic izleme komutları:
+
+```bash
+ros2 topic echo /planner/status
+ros2 topic echo /control/setpoints
+ros2 topic echo /perception/lidar_summary
+ros2 topic echo /planner/corridor
+```
 
 ## Parkur-2 Planning Stack
 
