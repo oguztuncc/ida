@@ -161,28 +161,53 @@ class ControllerNode(Node):
         return now - self.planner_speed_ts <= self.planner_timeout_s
 
     def loop(self) -> None:
-        if not self.mission_started:
-            self.publish_stop("mission_not_started")
-            return
-
         if self.mission_completed:
             self.publish_stop("mission_completed")
             return
 
-        if self.current_heading is None or self.target_bearing is None:
+        if not self.mission_started:
+            self.publish_stop("mission_not_started")
+            return
+
+        if self.current_heading is None:
+            return
+
+        # Parkur 3: planner bearing varsa target_bearing şart değil
+        using_planner = (
+            self.use_planner_bearing
+            and self._planner_fresh()
+            and self.planner_bearing is not None
+        )
+
+        if self.target_bearing is None and not using_planner:
+            self.publish_stop("no_target_bearing")
             return
 
         target_source = "guidance"
-        corrected_target = self.target_bearing + self.vision_heading_bias
-        if self.use_planner_bearing and self._planner_fresh():
+        if using_planner:
             corrected_target = self.planner_bearing
             target_source = "planner"
+        else:
+            corrected_target = self.target_bearing + self.vision_heading_bias
 
         heading_error = normalize_angle_deg(
             corrected_target - self.current_heading
         )
 
-        if fabs(heading_error) < 10.0:
+        # Parkur 3: planner kullanıyorsa hız limitini planner'dan al
+        if using_planner and self._speed_limit_fresh():
+            linear_speed = min(self.planner_speed_limit, self.max_linear_speed)
+        elif using_planner:
+            # Planner kullanılıyor ama speed limit eski, default hız kullan
+            if fabs(heading_error) < 10.0:
+                linear_speed = self.max_linear_speed
+            elif fabs(heading_error) < 25.0:
+                linear_speed = 0.28
+            elif fabs(heading_error) < 45.0:
+                linear_speed = 0.15
+            else:
+                linear_speed = 0.05
+        elif fabs(heading_error) < 10.0:
             linear_speed = self.max_linear_speed
         elif fabs(heading_error) < 25.0:
             linear_speed = 0.28
@@ -190,9 +215,6 @@ class ControllerNode(Node):
             linear_speed = 0.15
         else:
             linear_speed = 0.05
-
-        if self.use_planner_bearing and self._speed_limit_fresh():
-            linear_speed = min(linear_speed, self.planner_speed_limit)
 
         angular_speed = clamp(
             heading_error * self.kp_heading,
@@ -204,6 +226,12 @@ class ControllerNode(Node):
         cmd.linear.x = float(linear_speed)
         cmd.angular.z = float(angular_speed)
         self.cmd_pub.publish(cmd)
+
+        self.get_logger().info(
+            f"cmd: linear={linear_speed:.2f} angular={angular_speed:.2f} "
+            f"source={target_source} planner_fresh={self._planner_fresh()}",
+            throttle_duration_sec=1.0,
+        )
 
         self.setpoint_pub.publish(
             String(

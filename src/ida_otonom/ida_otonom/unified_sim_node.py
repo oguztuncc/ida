@@ -22,30 +22,30 @@ class SimObject:
     color: str
 
 
-class Parkur2SimNode(Node):
+class UnifiedSimNode(Node):
     def __init__(self) -> None:
-        super().__init__("parkur2_sim_node")
+        super().__init__("unified_sim_node")
 
         self.declare_parameter("initial_lat", 40.1181000)
         self.declare_parameter("initial_lon", 26.4081000)
-        self.declare_parameter("initial_heading_deg", 45.0)
+        self.declare_parameter("initial_heading_deg", 43.0)
         self.declare_parameter("update_rate_hz", 20.0)
         self.declare_parameter("scan_rate_hz", 10.0)
         self.declare_parameter("detection_rate_hz", 8.0)
         self.declare_parameter("world_rate_hz", 2.0)
         self.declare_parameter("time_scale", 1.0)
-        self.declare_parameter("max_speed_mps", 0.40)
-        self.declare_parameter("max_yaw_rate_radps", 0.70)
+        self.declare_parameter("max_speed_mps", 0.50)
+        self.declare_parameter("max_yaw_rate_radps", 0.90)
         self.declare_parameter("cmd_vel_topic", "/control/cmd_vel_safe")
-        self.declare_parameter("scan_range_max_m", 12.0)
+        self.declare_parameter("scan_range_max_m", 16.0)
         self.declare_parameter("scan_range_min_m", 0.15)
         self.declare_parameter("scan_ray_count", 361)
-        self.declare_parameter("detection_range_max_m", 10.0)
-        self.declare_parameter("detection_fov_deg", 110.0)
+        self.declare_parameter("detection_range_max_m", 15.0)
+        self.declare_parameter("detection_fov_deg", 120.0)
         self.declare_parameter("detection_topic", "/perception/buoy_detections")
-        self.declare_parameter("world_variant", "parkur2")
+        self.declare_parameter("world_variant", "unified")
         self.declare_parameter("course_width_m", 8.82)
-        self.declare_parameter("course_jitter_m", 0.0)
+        self.declare_parameter("course_jitter_m", 0.45)
         self.declare_parameter("include_obstacles", True)
 
         self.origin_lat = float(self.get_parameter("initial_lat").value)
@@ -95,12 +95,7 @@ class Parkur2SimNode(Node):
         self.east_m = 0.0
         self.north_m = 0.0
         self.last_cmd = Twist()
-        self.objects = self._build_world()
-        self.visual_markers = self._build_visual_markers()
-        # Parkur 3: start in the middle of the 3 buoys
-        if self.world_variant == "parkur3":
-            self.east_m = 0.0
-            self.north_m = 0.0
+        self.objects = self._build_unified_world()
 
         self.gps_pub = self.create_publisher(
             NavSatFix,
@@ -147,54 +142,85 @@ class Parkur2SimNode(Node):
         )
 
         self.get_logger().info(
-            f"{self.world_variant} sim world loaded with "
+            f"Unified sim world loaded with "
             f"{len(self.objects)} object(s), time_scale={self.time_scale:.1f}x"
         )
 
-    def _build_world(self) -> list[SimObject]:
-        if self.world_variant == "parkur1":
-            return self._build_parkur1_world()
-        if self.world_variant == "parkur3":
-            return self._build_parkur3_world()
-        return self._build_parkur2_world()
+    def _build_unified_world(self) -> list[SimObject]:
+        """
+        Unified dünya: Parkur 1 ve Parkur 2 aynı dünyada, farklı bölgelerde.
 
-    def _build_visual_markers(self) -> list[SimObject]:
-        if self.world_variant == "parkur2":
-            return [
-                SimObject(
-                    "parkur2_finish_wp",
-                    "finish_waypoint",
-                    "finish_waypoint",
-                    55.0,
-                    48.0,
-                    0.55,
-                    120.0,
-                    "#48d17a",
-                )
-            ]
-        return []
+        Parkur 1: Başlangıç (0,0) -> Bitiş (101, 111) [Kuzey-Doğu yönünde]
+        Parkur 2: Başlangıç (101, 111) -> Bitiş (156, 159) [Güney-Doğu yönünde]
 
-    def _build_parkur2_world(self) -> list[SimObject]:
-        route = [
-            (0.0, 0.0),
-            (12.0, 12.0),
-            (25.0, 22.0),
-            (40.0, 35.0),
-            (55.0, 48.0),
-        ]
-        stations = [
-            (6.0, 6.0),
-            (13.0, 12.8),
-            (20.0, 18.2),
-            (28.0, 24.6),
-            (36.0, 31.4),
-            (45.0, 39.3),
-            (53.0, 46.2),
-        ]
+        Geçiş: Parkur 1 bitiş noktası = Parkur 2 başlangıç noktası
+        """
         objects = []
-        previous = route[0]
-        for index, center in enumerate(stations):
-            next_point = route[min(index // 2 + 1, len(route) - 1)]
+
+        # ==================== PARKUR 1: DUBA KORİDORU ====================
+        # Başlangıç: (0, 0), Bitiş: (101, 111)
+        # waypoint1: (0,0) -> waypoint2: (16,15) -> waypoint3: (34,34) -> waypoint4: (101,111)
+        parkur1_route = [
+            (0.0, 0.0),
+            (16.0, 15.0),
+            (34.0, 34.0),
+            (50.0, 56.0),
+            (67.0, 76.0),
+            (84.0, 94.0),
+            (101.0, 111.0),
+        ]
+
+        # Parkur 1 duba koridoru
+        parkur1_objects = self._build_course_boundaries(
+            parkur1_route,
+            spacing_m=7.0,
+            object_prefix="parkur1_course",
+        )
+        objects.extend(parkur1_objects)
+
+        # ==================== GEÇİŞ BÖLGESİ ====================
+        # Parkur 1 bitişi / Parkur 2 başlangıcı işareti
+        objects.append(
+            SimObject(
+                object_id="transition_marker",
+                kind="transition",
+                class_name="target_buoy",
+                east_m=101.0,
+                north_m=111.0,
+                radius_m=0.50,
+                hue_deg=120.0,
+                color="#00ff00",
+            )
+        )
+
+        # ==================== PARKUR 2: ENGEL KORİDORU ====================
+        # Başlangıç: (101, 111), Bitiş: (156, 159)
+        # waypoint1 -> waypoint2 -> waypoint3 -> waypoint4
+        parkur2_start_east = 101.0
+        parkur2_start_north = 111.0
+
+        parkur2_route = [
+            (parkur2_start_east, parkur2_start_north),
+            (parkur2_start_east + 12.0, parkur2_start_north + 12.0),
+            (parkur2_start_east + 25.0, parkur2_start_north + 22.0),
+            (parkur2_start_east + 40.0, parkur2_start_north + 35.0),
+            (parkur2_start_east + 55.0, parkur2_start_north + 48.0),
+        ]
+
+        # Parkur 2 duba koridoru
+        parkur2_stations = [
+            (parkur2_start_east + 6.0, parkur2_start_north + 6.0),
+            (parkur2_start_east + 13.0, parkur2_start_north + 12.8),
+            (parkur2_start_east + 20.0, parkur2_start_north + 18.2),
+            (parkur2_start_east + 28.0, parkur2_start_north + 24.6),
+            (parkur2_start_east + 36.0, parkur2_start_north + 31.4),
+            (parkur2_start_east + 45.0, parkur2_start_north + 39.3),
+            (parkur2_start_east + 53.0, parkur2_start_north + 46.2),
+        ]
+
+        previous = parkur2_route[0]
+        for index, center in enumerate(parkur2_stations):
+            next_point = parkur2_route[min(index // 2 + 1, len(parkur2_route) - 1)]
             dx = next_point[0] - previous[0]
             dy = next_point[1] - previous[1]
             length = max(math.hypot(dx, dy), 1e-6)
@@ -206,7 +232,7 @@ class Parkur2SimNode(Node):
                 north = center[1] + left_y * offset * sign
                 objects.append(
                     SimObject(
-                        object_id=f"course_{side}_{index}",
+                        object_id=f"parkur2_course_{side}_{index}",
                         kind="course_boundary",
                         class_name="course_buoy",
                         east_m=east,
@@ -218,108 +244,41 @@ class Parkur2SimNode(Node):
                 )
             previous = center
 
+        # Parkur 2 engelleri
         if self.include_obstacles:
-            objects.extend(
-                [
-                    SimObject(
-                        "obstacle_0",
-                        "obstacle",
-                        "obstacle_buoy",
-                        9.4,
-                        8.4,
-                        0.70,
-                        62.0,
-                        "#ffe15a",
-                    ),
-                    SimObject(
-                        "obstacle_1",
-                        "obstacle",
-                        "obstacle_buoy",
-                        32.0,
-                        29.3,
-                        0.65,
-                        62.0,
-                        "#ffe15a",
-                    ),
-                    SimObject(
-                        "obstacle_2",
-                        "obstacle",
-                        "obstacle_buoy",
-                        44.6,
-                        37.0,
-                        0.70,
-                        62.0,
-                        "#ffe15a",
-                    ),
-                ]
-            )
-        return objects
-
-    def _build_parkur1_world(self) -> list[SimObject]:
-        route = [
-            (0.0, 0.0),
-            (16.0, 15.0),
-            (34.0, 34.0),
-            (50.0, 56.0),
-            (67.0, 76.0),
-            (84.0, 94.0),
-            (101.0, 111.0),
-        ]
-        return self._build_course_boundaries(
-            route,
-            spacing_m=7.0,
-            object_prefix="parkur1_course",
-        )
-
-    def _build_parkur3_world(self) -> list[SimObject]:
-        """
-        Parkur 3 colored target buoy world.
-
-        IDA başlangıçta durur, IHA'dan renk gelince o renkteki dubaya gider.
-        Dubalar yan yana, aralarında mesafe var.
-        """
-        objects = []
-        spacing = 8.0  # dubalar arası mesafe
-        # 3 renkli duba - yan yana (IDA ortada başlar, dubalar 5m ileride)
-        colored_buoys = [
-            {
-                "id": "red_buoy",
-                "color": "red",
-                "hue": 0.0,
-                "hex": "#ff0000",
-                "east": 0.0,
-                "north": 5.0,
-            },
-            {
-                "id": "blue_buoy",
-                "color": "blue",
-                "hue": 240.0,
-                "hex": "#0000ff",
-                "east": -spacing,
-                "north": 5.0,
-            },
-            {
-                "id": "yellow_buoy",
-                "color": "yellow",
-                "hue": 60.0,
-                "hex": "#ffff00",
-                "east": spacing,
-                "north": 5.0,
-            },
-        ]
-        for buoy in colored_buoys:
-            objects.append(
+            objects.extend([
                 SimObject(
-                    object_id=buoy["id"],
-                    kind="target_buoy",
-                    class_name=f"{buoy['color']}_buoy",
-                    east_m=buoy["east"],
-                    north_m=buoy["north"],
-                    radius_m=0.40,
-                    hue_deg=buoy["hue"],
-                    color=buoy["hex"],
-                )
-            )
+                    "parkur2_obstacle_0",
+                    "obstacle",
+                    "obstacle_buoy",
+                    parkur2_start_east + 9.4,
+                    parkur2_start_north + 8.4,
+                    0.70,
+                    62.0,
+                    "#ffe15a",
+                ),
+                SimObject(
+                    "parkur2_obstacle_1",
+                    "obstacle",
+                    "obstacle_buoy",
+                    parkur2_start_east + 32.0,
+                    parkur2_start_north + 29.3,
+                    0.65,
+                    62.0,
+                    "#ffe15a",
+                ),
+                SimObject(
+                    "parkur2_obstacle_2",
+                    "obstacle",
+                    "obstacle_buoy",
+                    parkur2_start_east + 44.6,
+                    parkur2_start_north + 37.0,
+                    0.70,
+                    62.0,
+                    "#ffe15a",
+                ),
+            ])
+
         return objects
 
     def _build_course_boundaries(
@@ -503,8 +462,7 @@ class Parkur2SimNode(Node):
         half_fov = self.detection_fov_deg / 2.0
         for obj in self.objects:
             forward, left = self._object_in_boat_frame(obj)
-            # Parkur 3: tüm objeleri yayınla (ön/arka fark etmez)
-            if self.world_variant != "parkur3" and forward <= 0.2:
+            if forward <= 0.2:
                 continue
             range_m = math.hypot(forward, left)
             if range_m > self.detection_range_max_m:
@@ -540,21 +498,19 @@ class Parkur2SimNode(Node):
                 }
             )
 
-        payload = {
-            "timestamp": self.get_clock().now().nanoseconds / 1e9,
-            "frame_id": "sim_camera",
-            "model_path": f"synthetic_{self.world_variant}_sim",
-            "model_loaded": True,
-            "detections": detections,
-        }
-        self.detection_pub.publish(String(data=to_json(payload)))
-        # DEBUG: log detection count for parkur3
-        if self.world_variant == "parkur3" and detections:
-            self.get_logger().info(
-                f"Published {len(detections)} detections: "
-                + ", ".join([d["id"] + "=" + d["class_name"] for d in detections]),
-                throttle_duration_sec=3.0,
+        self.detection_pub.publish(
+            String(
+                data=to_json(
+                    {
+                        "timestamp": self.get_clock().now().nanoseconds / 1e9,
+                        "frame_id": "sim_camera",
+                        "model_path": f"synthetic_{self.world_variant}_sim",
+                        "model_loaded": True,
+                        "detections": detections,
+                    }
+                )
             )
+        )
 
     def publish_world(self) -> None:
         objects = []
@@ -580,22 +536,6 @@ class Parkur2SimNode(Node):
                     "lon": lon,
                     "radius_m": obj.radius_m,
                     "color": obj.color,
-                }
-            )
-
-        for marker in self.visual_markers:
-            lat, lon = self._lat_lon(marker.east_m, marker.north_m)
-            objects.append(
-                {
-                    "id": marker.object_id,
-                    "kind": marker.kind,
-                    "class_name": marker.class_name,
-                    "east_m": marker.east_m,
-                    "north_m": marker.north_m,
-                    "lat": lat,
-                    "lon": lon,
-                    "radius_m": marker.radius_m,
-                    "color": marker.color,
                 }
             )
 
@@ -628,7 +568,7 @@ class Parkur2SimNode(Node):
 
 def main(args=None) -> None:
     rclpy.init(args=args)
-    node = Parkur2SimNode()
+    node = UnifiedSimNode()
     rclpy.spin(node)
     node.destroy_node()
     rclpy.shutdown()

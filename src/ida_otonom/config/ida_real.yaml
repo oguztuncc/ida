@@ -99,6 +99,7 @@ course_memory_node:
 
 semantic_buoy_classifier_node:
   ros__parameters:
+    require_sensor_validation: true
     course_class_names:
       - course_buoy
       - buoy
@@ -113,6 +114,15 @@ semantic_buoy_classifier_node:
     course_hue_tolerance_deg: 35.0
     strong_color_diff_deg: 55.0
     min_confidence: 0.35
+
+sensor_cross_validator_node:
+  ros__parameters:
+    input_topic: /perception/buoy_detections_raw
+    output_topic: /perception/buoy_detections
+    bearing_window_deg: 6.0
+    range_tolerance_m: 0.85
+    relative_range_tolerance: 0.30
+    allow_lidar_only: false
 
 corridor_tracker_node:
   ros__parameters:
@@ -150,3 +160,5 @@ parkur2_planner_node:
     bypass_lookahead_m: 3.0
     require_corridor_for_motion: true
     corridor_search_angle_deg: 35.0
+    final_approach_distance_m: 14.0
+    waypoint_bias_weight: 0.15

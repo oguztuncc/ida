@@ -59,6 +59,14 @@ setup(
             'safety_node = ida_otonom.safety_node:main',
             'sim_visualizer_node = ida_otonom.sim_visualizer_node:main',
             'parkur2_sim_node = ida_otonom.parkur2_sim_node:main',
+            'unified_sim_node = ida_otonom.unified_sim_node:main',
+            'color_receiver_node = ida_otonom.color_receiver_node:main',
+            'color_buoy_finder_node = ida_otonom.color_buoy_finder_node:main',
+            'parkur3_planner_node = ida_otonom.parkur3_planner_node:main',
+            (
+                'sensor_cross_validator_node = '
+                'ida_otonom.sensor_cross_validator_node:main'
+            ),
         ],
     },
 )

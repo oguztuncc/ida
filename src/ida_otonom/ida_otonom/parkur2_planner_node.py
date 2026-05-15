@@ -30,6 +30,8 @@ class Parkur2PlannerNode(Node):
         self.declare_parameter("corridor_coast_s", 1.2)
         self.declare_parameter("bearing_rate_limit_degps", 70.0)
         self.declare_parameter("sensor_timeout_s", 1.0)
+        self.declare_parameter("final_approach_distance_m", 12.0)
+        self.declare_parameter("waypoint_bias_weight", 0.15)
 
         # Legacy parameters may still exist in YAML files; declare them so
         # launch overrides remain harmless while this node uses the new state
@@ -101,9 +103,24 @@ class Parkur2PlannerNode(Node):
         self.sensor_timeout_s = float(
             self.get_parameter("sensor_timeout_s").value
         )
+        self.final_approach_distance_m = float(
+            self.get_parameter("final_approach_distance_m").value
+        )
+        self.waypoint_bias_weight = clamp(
+            float(self.get_parameter("waypoint_bias_weight").value),
+            0.0,
+            1.0,
+        )
+        self.require_corridor_for_motion = bool(
+            self.get_parameter("require_corridor_for_motion").value
+        )
+        self.corridor_search_angle_deg = float(
+            self.get_parameter("corridor_search_angle_deg").value
+        )
 
         self.heading_deg = None
         self.target_bearing_deg = None
+        self.target_distance_m = None
         self.lidar_summary = None
         self.corridor = None
         self.semantic = None
@@ -151,6 +168,12 @@ class Parkur2PlannerNode(Node):
             10,
         )
         self.create_subscription(
+            Float32,
+            "/guidance/target_distance_m",
+            self.target_distance_cb,
+            10,
+        )
+        self.create_subscription(
             String,
             "/perception/lidar_summary",
             self.lidar_cb,
@@ -177,6 +200,9 @@ class Parkur2PlannerNode(Node):
     def target_cb(self, msg: Float32) -> None:
         self.target_bearing_deg = float(msg.data)
 
+    def target_distance_cb(self, msg: Float32) -> None:
+        self.target_distance_m = max(0.0, float(msg.data))
+
     def lidar_cb(self, msg: String) -> None:
         try:
             self.lidar_summary = from_json(msg.data)
@@ -200,6 +226,15 @@ class Parkur2PlannerNode(Node):
 
     def _target_relative_bearing(self) -> float:
         return normalize_angle_deg(self.target_bearing_deg - self.heading_deg)
+
+    def _blend_relative_bearing(
+        self,
+        primary: float,
+        secondary: float,
+        weight: float,
+    ) -> float:
+        delta = normalize_angle_deg(secondary - primary)
+        return normalize_angle_deg(primary + delta * clamp(weight, 0.0, 1.0))
 
     def _absolute_from_relative(self, relative_deg: float) -> float:
         return (self.heading_deg + relative_deg) % 360.0
@@ -404,6 +439,7 @@ class Parkur2PlannerNode(Node):
                         "relative_bearing_deg": relative_bearing,
                         "speed_limit_mps": speed_limit,
                         "front_clearance_m": front_clearance,
+                        "target_distance_m": self.target_distance_m,
                         "lidar_state": lidar_state,
                         "corridor_confidence": None
                         if corridor is None
@@ -576,14 +612,54 @@ class Parkur2PlannerNode(Node):
             )
             return
 
+        if corridor is None and self.require_corridor_for_motion:
+            self.mode = "CORRIDOR_SEARCH"
+            relative = clamp(
+                self.corridor_search_angle_deg,
+                -self.max_relative_bearing_deg,
+                self.max_relative_bearing_deg,
+            )
+            self._publish_plan(
+                self.mode,
+                relative,
+                0.0,
+                front_clearance,
+                lidar_state,
+                corridor,
+                obstacle,
+                "waiting_for_validated_corridor",
+            )
+            return
+
         self.mode = "CRUISE"
         self._reset_pass()
         if corridor is not None:
-            relative = self._nav_relative_from_body_left(
+            corridor_relative = self._nav_relative_from_body_left(
                 float(corridor["body_bearing_deg"])
             )
             reason = corridor["reason"]
             speed = self.max_speed_mps
+            if (
+                self.target_distance_m is not None
+                and self.target_distance_m <= self.final_approach_distance_m
+            ):
+                relative = target_relative
+                reason = "final_waypoint_approach"
+                speed = min(
+                    speed,
+                    max(
+                        self.approach_speed_mps,
+                        self.max_speed_mps
+                        * self.target_distance_m
+                        / max(self.final_approach_distance_m, 0.1),
+                    ),
+                )
+            else:
+                relative = self._blend_relative_bearing(
+                    corridor_relative,
+                    target_relative,
+                    self.waypoint_bias_weight,
+                )
         else:
             relative = target_relative
             reason = "waypoint_no_corridor"

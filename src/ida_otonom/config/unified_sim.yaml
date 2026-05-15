@@ -1,6 +1,6 @@
 parkur2_sim_node:
   ros__parameters:
-    world_variant: parkur1
+    world_variant: unified
     initial_lat: 40.1181000
     initial_lon: 26.4081000
     initial_heading_deg: 43.0
@@ -20,7 +20,7 @@ parkur2_sim_node:
     detection_topic: /perception/buoy_detections_raw
     course_width_m: 8.82
     course_jitter_m: 0.45
-    include_obstacles: false
+    include_obstacles: true
 
 mission_manager_node:
   ros__parameters:
@@ -131,16 +131,16 @@ parkur2_planner_node:
     corridor_keepout_margin_m: 1.20
     min_corridor_return_angle_deg: 25.0
     sensor_timeout_s: 1.0
-    final_approach_distance_m: 12.0
-    waypoint_bias_weight: 0.15
+    final_approach_distance_m: 14.0
+    waypoint_bias_weight: 0.20
 
 sim_visualizer_node:
   ros__parameters:
-    window_width: 1100
-    window_height: 760
+    window_width: 1400
+    window_height: 900
     refresh_hz: 20.0
-    trail_length: 3500
-    initial_zoom: 1.0
-    min_zoom: 0.5
+    trail_length: 5000
+    initial_zoom: 0.6
+    min_zoom: 0.3
     max_zoom: 8.0
-    window_title: IDA Parkur-1 Duba Koridor Simulasyonu
+    window_title: IDA Unified Simulasyon - Parkur 1 & 2

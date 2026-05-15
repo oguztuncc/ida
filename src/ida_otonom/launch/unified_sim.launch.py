@@ -1,6 +1,6 @@
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument
-from launch.conditions import IfCondition, UnlessCondition
+from launch.actions import DeclareLaunchArgument, LogInfo
+from launch.conditions import IfCondition
 from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
 from launch_ros.actions import Node
 from launch_ros.parameter_descriptions import ParameterValue
@@ -8,59 +8,43 @@ from launch_ros.substitutions import FindPackageShare
 
 
 def generate_launch_description():
+    """Unified simulation launch for Parkur 1 -> Parkur 2."""
     config_file = LaunchConfiguration("config_file")
-    mission_file = LaunchConfiguration("mission_file")
     mission_files = LaunchConfiguration("mission_files")
-    enable_multi_mission = LaunchConfiguration("enable_multi_mission")
     transition_delay_s = LaunchConfiguration("transition_delay_s")
     arrival_radius_m = LaunchConfiguration("arrival_radius_m")
     log_dir = LaunchConfiguration("log_dir")
     enable_logger = LaunchConfiguration("enable_logger")
     enable_costmap_logger = LaunchConfiguration("enable_costmap_logger")
     enable_visualizer = LaunchConfiguration("enable_visualizer")
-    enable_corridor_planning = LaunchConfiguration("enable_corridor_planning")
-    enable_yki_bridge = LaunchConfiguration("enable_yki_bridge")
-    yki_udp_ip = LaunchConfiguration("yki_udp_ip")
-    yki_udp_port = LaunchConfiguration("yki_udp_port")
 
     default_config = PathJoinSubstitution(
-        [FindPackageShare("ida_otonom"), "config", "parkur1_sim.yaml"]
+        [FindPackageShare("ida_otonom"), "config", "unified_sim.yaml"]
     )
-    default_mission = PathJoinSubstitution(
-        [FindPackageShare("ida_otonom"), "missions", "mission.json"]
+    default_parkur1_mission = PathJoinSubstitution(
+        [FindPackageShare("ida_otonom"), "missions", "unified_parkur1.json"]
     )
     default_parkur2_mission = PathJoinSubstitution(
-        [FindPackageShare("ida_otonom"), "missions", "parkur2_sim.json"]
+        [FindPackageShare("ida_otonom"), "missions", "unified_parkur2.json"]
     )
-    common_mission_params = {
-        "mission_file": ParameterValue(mission_file, value_type=str)
-    }
 
     return LaunchDescription(
         [
+            LogInfo(msg="Starting Unified Simulasyon: Parkur 1 -> Parkur 2"),
+
             DeclareLaunchArgument(
                 "config_file",
                 default_value=default_config,
-                description="Parkur-1 duba corridor simulation YAML.",
-            ),
-            DeclareLaunchArgument(
-                "mission_file",
-                default_value=default_mission,
-                description="Parkur-1 waypoint JSON path.",
+                description="Unified simulation configuration YAML.",
             ),
             DeclareLaunchArgument(
                 "mission_files",
-                default_value=[default_mission, ",", default_parkur2_mission],
-                description="Comma-separated list of mission files for multi-mission mode.",
-            ),
-            DeclareLaunchArgument(
-                "enable_multi_mission",
-                default_value="false",
-                description="Enable multi-mission mode (Parkur 1 -> Parkur 2 auto transition).",
+                default_value=[default_parkur1_mission, ",", default_parkur2_mission],
+                description="Comma-separated list of mission files.",
             ),
             DeclareLaunchArgument(
                 "transition_delay_s",
-                default_value="2.0",
+                default_value="3.0",
                 description="Delay in seconds between missions.",
             ),
             DeclareLaunchArgument(
@@ -71,7 +55,7 @@ def generate_launch_description():
             DeclareLaunchArgument(
                 "log_dir",
                 default_value="/tmp/ida_otonom_logs",
-                description="Telemetry output directory for simulation.",
+                description="Telemetry output directory.",
             ),
             DeclareLaunchArgument(
                 "enable_logger",
@@ -86,65 +70,30 @@ def generate_launch_description():
             DeclareLaunchArgument(
                 "enable_visualizer",
                 default_value="true",
-                description="Start turtle-style simulation visualizer.",
+                description="Start unified simulation visualizer.",
             ),
-            DeclareLaunchArgument(
-                "enable_corridor_planning",
-                default_value="true",
-                description=(
-                    "Use side buoy corridor tracking instead of only "
-                    "waypoint tracking."
-                ),
-            ),
-            DeclareLaunchArgument(
-                "enable_yki_bridge",
-                default_value="false",
-                description="Start UDP telemetry bridge to YKI.",
-            ),
-            DeclareLaunchArgument(
-                "yki_udp_ip",
-                default_value="127.0.0.1",
-                description="YKI UDP target IP.",
-            ),
-            DeclareLaunchArgument(
-                "yki_udp_port",
-                default_value="5005",
-                description="YKI UDP target port.",
-            ),
+
+            # Unified Simülasyon Node (Tek dünya, her iki parkur)
             Node(
                 package="ida_otonom",
-                executable="sim_gps_node",
-                name="sim_gps_node",
+                executable="unified_sim_node",
+                name="unified_sim_node",
                 output="screen",
-                condition=UnlessCondition(enable_corridor_planning),
-                parameters=[{"cmd_vel_topic": "/control/cmd_vel_safe"}],
-            ),
-            Node(
-                package="ida_otonom",
-                executable="parkur2_sim_node",
-                name="parkur2_sim_node",
-                output="screen",
-                condition=IfCondition(enable_corridor_planning),
                 parameters=[
                     config_file,
                     {"detection_topic": "/perception/buoy_detections_raw"},
                 ],
             ),
+
+            # Mission Manager - Multi-Mission Mode
             Node(
                 package="ida_otonom",
                 executable="mission_manager_node",
                 name="mission_manager_node",
                 output="screen",
                 parameters=[
-                    config_file,
-                    common_mission_params,
                     {"auto_start": True},
-                    {
-                        "enable_multi_mission": ParameterValue(
-                            enable_multi_mission,
-                            value_type=bool,
-                        )
-                    },
+                    {"enable_multi_mission": True},
                     {
                         "transition_delay_s": ParameterValue(
                             transition_delay_s,
@@ -159,6 +108,8 @@ def generate_launch_description():
                     },
                 ],
             ),
+
+            # GPS Guidance
             Node(
                 package="ida_otonom",
                 executable="gps_guidance_node",
@@ -166,7 +117,6 @@ def generate_launch_description():
                 output="screen",
                 parameters=[
                     config_file,
-                    common_mission_params,
                     {
                         "arrival_radius_m": ParameterValue(
                             arrival_radius_m,
@@ -175,6 +125,8 @@ def generate_launch_description():
                     },
                 ],
             ),
+
+            # Controller
             Node(
                 package="ida_otonom",
                 executable="controller_node",
@@ -182,12 +134,13 @@ def generate_launch_description():
                 output="screen",
                 parameters=[config_file],
             ),
+
+            # LiDAR Processor
             Node(
                 package="ida_otonom",
                 executable="lidar_processor_node",
                 name="lidar_processor_node",
                 output="screen",
-                condition=IfCondition(enable_corridor_planning),
                 parameters=[config_file],
             ),
             Node(
@@ -195,41 +148,46 @@ def generate_launch_description():
                 executable="sensor_cross_validator_node",
                 name="sensor_cross_validator_node",
                 output="screen",
-                condition=IfCondition(enable_corridor_planning),
                 parameters=[config_file],
             ),
+
+            # Course Memory
             Node(
                 package="ida_otonom",
                 executable="course_memory_node",
                 name="course_memory_node",
                 output="screen",
-                condition=IfCondition(enable_corridor_planning),
                 parameters=[config_file],
             ),
+
+            # Semantic Buoy Classifier
             Node(
                 package="ida_otonom",
                 executable="semantic_buoy_classifier_node",
                 name="semantic_buoy_classifier_node",
                 output="screen",
-                condition=IfCondition(enable_corridor_planning),
                 parameters=[config_file],
             ),
+
+            # Corridor Tracker
             Node(
                 package="ida_otonom",
                 executable="corridor_tracker_node",
                 name="corridor_tracker_node",
                 output="screen",
-                condition=IfCondition(enable_corridor_planning),
                 parameters=[config_file],
             ),
+
+            # Parkur 2 Planner
             Node(
                 package="ida_otonom",
                 executable="parkur2_planner_node",
                 name="parkur2_planner_node",
                 output="screen",
-                condition=IfCondition(enable_corridor_planning),
                 parameters=[config_file],
             ),
+
+            # Safety Node
             Node(
                 package="ida_otonom",
                 executable="safety_node",
@@ -237,6 +195,8 @@ def generate_launch_description():
                 output="screen",
                 parameters=[config_file],
             ),
+
+            # Logger
             Node(
                 package="ida_otonom",
                 executable="logger_node",
@@ -248,6 +208,8 @@ def generate_launch_description():
                     {"log_dir": ParameterValue(log_dir, value_type=str)},
                 ],
             ),
+
+            # Visualizer
             Node(
                 package="ida_otonom",
                 executable="sim_visualizer_node",
@@ -256,6 +218,8 @@ def generate_launch_description():
                 condition=IfCondition(enable_visualizer),
                 parameters=[config_file],
             ),
+
+            # Local Costmap
             Node(
                 package="ida_otonom",
                 executable="local_costmap_node",
@@ -265,27 +229,6 @@ def generate_launch_description():
                 parameters=[
                     config_file,
                     {"log_dir": ParameterValue(log_dir, value_type=str)},
-                ],
-            ),
-            Node(
-                package="ida_otonom",
-                executable="yki_bridge_node",
-                name="yki_bridge_node",
-                output="screen",
-                condition=IfCondition(enable_yki_bridge),
-                parameters=[
-                    {
-                        "udp_ip": ParameterValue(
-                            yki_udp_ip,
-                            value_type=str,
-                        )
-                    },
-                    {
-                        "udp_port": ParameterValue(
-                            yki_udp_port,
-                            value_type=int,
-                        )
-                    },
                 ],
             ),
         ]

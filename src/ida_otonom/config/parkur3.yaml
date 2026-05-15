@@ -1,0 +1,118 @@
+mission_manager_node:
+  ros__parameters:
+    auto_start: false
+    disable_waypoint_completion: true
+    complete_on_parkur3: true
+
+gps_guidance_node:
+  ros__parameters:
+    arrival_radius_m: 2.0
+
+controller_node:
+  ros__parameters:
+    kp_heading: 0.02
+    max_linear_speed: 0.30
+    max_angular_speed: 0.6
+    use_planner_bearing: true
+    planner_timeout_s: 0.5
+
+safety_node:
+  ros__parameters:
+    input_topic: /control/cmd_vel
+    output_topic: /control/cmd_vel_safe
+    latch_kill: true
+
+mavros_bridge_node:
+  ros__parameters:
+    enabled: false
+    output_mode: disabled
+    input_topic: /control/cmd_vel_safe
+    cmd_vel_output_topic: /mavros/setpoint_velocity/cmd_vel_unstamped
+    manual_control_topic: /mavros/manual_control/send
+    command_timeout_s: 0.5
+    publish_rate_hz: 20.0
+    max_linear_speed_mps: 0.30
+    max_yaw_rate_radps: 0.6
+    manual_throttle_neutral: 500
+
+rc_kill_node:
+  ros__parameters:
+    enabled: true
+    channel_number: 7
+    threshold_pwm: 1800
+    active_high: true
+    failsafe_on_missing: true
+    rc_timeout_s: 0.5
+
+power_relay_node:
+  ros__parameters:
+    enabled: false
+    gpio_pin: -1
+    active_low: false
+    initial_motor_power_enabled: false
+
+yki_bridge_node:
+  ros__parameters:
+    udp_ip: 127.0.0.1
+    udp_port: 5005
+    enable_command_rx: true
+    command_bind_ip: 0.0.0.0
+    command_bind_port: 5006
+
+logger_node:
+  ros__parameters:
+    log_dir: /tmp/ida_otonom_logs
+
+local_costmap_node:
+  ros__parameters:
+    log_dir: /tmp/ida_otonom_logs
+    resolution_m: 0.25
+    width_m: 12.0
+    height_m: 12.0
+    publish_rate_hz: 1.0
+
+lidar_processor_node:
+  ros__parameters:
+    collision_distance_m: 0.8
+    sector_width_deg: 30.0
+
+# ==================== PARKUR 3 SPECIFIC ====================
+
+color_receiver_node:
+  ros__parameters:
+    default_color: ""
+    valid_colors:
+      - red
+      - blue
+      - yellow
+    color_timeout_s: 30.0
+    auto_start_search: true
+
+color_buoy_finder_node:
+  ros__parameters:
+    target_color: ""
+    scan_range_max_m: 15.0
+    scan_range_min_m: 0.15
+    min_object_size_m: 0.3
+    max_object_size_m: 1.0
+    object_cluster_threshold_m: 0.5
+    detection_confidence_threshold: 0.6
+    sensor_timeout_s: 2.0
+
+parkur3_planner_node:
+  ros__parameters:
+    max_speed_mps: 0.30
+    approach_speed_mps: 0.15
+    touch_speed_mps: 0.08
+    search_turn_speed_radps: 0.4
+    max_relative_bearing_deg: 45.0
+    touch_distance_m: 0.5
+    approach_distance_m: 3.0
+    search_timeout_s: 60.0
+    approach_timeout_s: 30.0
+    touch_timeout_s: 10.0
+    sensor_timeout_s: 2.0
+    bearing_rate_limit_degps: 60.0
+    require_color_first: true
+    sim_contact_stop_enabled: false
+    contact_clearance_m: 0.05

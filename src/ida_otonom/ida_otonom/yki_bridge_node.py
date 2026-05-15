@@ -93,6 +93,11 @@ class YkiBridgeNode(Node):
         )
         self.target_color_pub = self.create_publisher(
             String,
+            "/iha/target_color",
+            10,
+        )
+        self.mission_target_color_pub = self.create_publisher(
+            String,
             "/mission/target_color",
             10,
         )
@@ -171,6 +176,7 @@ class YkiBridgeNode(Node):
                 return
             self.target_color = color
             self.target_color_pub.publish(String(data=color))
+            self.mission_target_color_pub.publish(String(data=color))
             return
 
         self.get_logger().warn(f"Unsupported YKI command: {command_name}")

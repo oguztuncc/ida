@@ -8,25 +8,25 @@ from launch_ros.substitutions import FindPackageShare
 
 
 def generate_launch_description():
+    """Parkur 3 real hardware launch file."""
     config_file = LaunchConfiguration("config_file")
     mission_file = LaunchConfiguration("mission_file")
     log_dir = LaunchConfiguration("log_dir")
-    model_path = LaunchConfiguration("model_path")
-    enable_yolo = LaunchConfiguration("enable_yolo")
     enable_yki_bridge = LaunchConfiguration("enable_yki_bridge")
     enable_costmap_logger = LaunchConfiguration("enable_costmap_logger")
     mavros_bridge_enabled = LaunchConfiguration("mavros_bridge_enabled")
     mavros_output_mode = LaunchConfiguration("mavros_output_mode")
-
+    model_path = LaunchConfiguration("model_path")
+    enable_yolo = LaunchConfiguration("enable_yolo")
     color_image_topic = LaunchConfiguration("color_image_topic")
     depth_image_topic = LaunchConfiguration("depth_image_topic")
     camera_info_topic = LaunchConfiguration("camera_info_topic")
 
     default_config = PathJoinSubstitution(
-        [FindPackageShare("ida_otonom"), "config", "ida_real.yaml"]
+        [FindPackageShare("ida_otonom"), "config", "parkur3.yaml"]
     )
     default_mission = PathJoinSubstitution(
-        [FindPackageShare("ida_otonom"), "missions", "parkur2_sim.json"]
+        [FindPackageShare("ida_otonom"), "missions", "parkur3.json"]
     )
 
     mission_params = {
@@ -41,42 +41,17 @@ def generate_launch_description():
             DeclareLaunchArgument(
                 "config_file",
                 default_value=default_config,
-                description="Parkur-2 configuration YAML.",
+                description="Parkur-3 configuration YAML.",
             ),
             DeclareLaunchArgument(
                 "mission_file",
                 default_value=default_mission,
-                description="Mission waypoint JSON loaded before start.",
+                description="Parkur-3 mission JSON.",
             ),
             DeclareLaunchArgument(
                 "log_dir",
                 default_value="/tmp/ida_otonom_logs",
                 description="Local recording directory.",
-            ),
-            DeclareLaunchArgument(
-                "model_path",
-                default_value="models/buoy_yolo.pt",
-                description="YOLO buoy model path on Jetson.",
-            ),
-            DeclareLaunchArgument(
-                "enable_yolo",
-                default_value="true",
-                description="Load YOLO model if available.",
-            ),
-            DeclareLaunchArgument(
-                "color_image_topic",
-                default_value="/camera/camera/color/image_raw",
-                description="RealSense RGB image topic.",
-            ),
-            DeclareLaunchArgument(
-                "depth_image_topic",
-                default_value="/camera/camera/aligned_depth_to_color/image_raw",
-                description="RealSense aligned depth image topic.",
-            ),
-            DeclareLaunchArgument(
-                "camera_info_topic",
-                default_value="/camera/camera/color/camera_info",
-                description="RealSense color camera info topic.",
             ),
             DeclareLaunchArgument(
                 "enable_yki_bridge",
@@ -98,35 +73,44 @@ def generate_launch_description():
                 default_value="disabled",
                 description="disabled, cmd_vel, or manual_control.",
             ),
-            Node(
-                package="ida_otonom",
-                executable="mission_manager_node",
-                name="mission_manager_node",
-                output="screen",
-                parameters=[config_file, mission_params],
+            DeclareLaunchArgument(
+                "model_path",
+                default_value="models/buoy_yolo.pt",
+                description="YOLO colored buoy model path on Jetson.",
             ),
-            Node(
-                package="ida_otonom",
-                executable="gps_guidance_node",
-                name="gps_guidance_node",
-                output="screen",
-                parameters=[config_file, mission_params],
+            DeclareLaunchArgument(
+                "enable_yolo",
+                default_value="true",
+                description="Load YOLO model if available.",
             ),
+            DeclareLaunchArgument(
+                "color_image_topic",
+                default_value="/camera/camera/color/image_raw",
+                description="RealSense RGB image topic.",
+            ),
+            DeclareLaunchArgument(
+                "depth_image_topic",
+                default_value="/camera/camera/aligned_depth_to_color/image_raw",
+                description="RealSense aligned depth image topic.",
+            ),
+            DeclareLaunchArgument(
+                "camera_info_topic",
+                default_value="/camera/camera/color/camera_info",
+                description="RealSense color camera info topic.",
+            ),
+
+            # ==================== PARKUR 3 NODES ====================
+
+            # Renk Alıcı (IHA'dan)
             Node(
                 package="ida_otonom",
-                executable="lidar_processor_node",
-                name="lidar_processor_node",
+                executable="color_receiver_node",
+                name="color_receiver_node",
                 output="screen",
                 parameters=[config_file],
             ),
-            Node(
-                package="ida_otonom",
-                executable="local_costmap_node",
-                name="local_costmap_node",
-                output="screen",
-                condition=IfCondition(enable_costmap_logger),
-                parameters=[config_file, log_params],
-            ),
+
+            # Görüntü İşleme ile Renkli Duba Tespiti
             Node(
                 package="ida_otonom",
                 executable="buoy_detector_node",
@@ -155,45 +139,49 @@ def generate_launch_description():
                             camera_info_topic,
                             value_type=str,
                         ),
-                        "detection_topic": "/perception/buoy_detections_raw",
                     },
                 ],
             ),
+
+            # Renkli Duba Bulucu (LiDAR)
             Node(
                 package="ida_otonom",
-                executable="sensor_cross_validator_node",
-                name="sensor_cross_validator_node",
+                executable="color_buoy_finder_node",
+                name="color_buoy_finder_node",
                 output="screen",
                 parameters=[config_file],
             ),
+
+            # Parkur 3 Planner
             Node(
                 package="ida_otonom",
-                executable="course_memory_node",
-                name="course_memory_node",
+                executable="parkur3_planner_node",
+                name="parkur3_planner_node",
                 output="screen",
                 parameters=[config_file],
             ),
+
+            # ==================== SHARED NODES ====================
+
+            # Mission Manager
             Node(
                 package="ida_otonom",
-                executable="semantic_buoy_classifier_node",
-                name="semantic_buoy_classifier_node",
+                executable="mission_manager_node",
+                name="mission_manager_node",
                 output="screen",
-                parameters=[config_file],
+                parameters=[config_file, mission_params],
             ),
+
+            # GPS Guidance
             Node(
                 package="ida_otonom",
-                executable="corridor_tracker_node",
-                name="corridor_tracker_node",
+                executable="gps_guidance_node",
+                name="gps_guidance_node",
                 output="screen",
-                parameters=[config_file],
+                parameters=[config_file, mission_params],
             ),
-            Node(
-                package="ida_otonom",
-                executable="parkur2_planner_node",
-                name="parkur2_planner_node",
-                output="screen",
-                parameters=[config_file],
-            ),
+
+            # Controller
             Node(
                 package="ida_otonom",
                 executable="controller_node",
@@ -201,6 +189,27 @@ def generate_launch_description():
                 output="screen",
                 parameters=[config_file, {"use_planner_bearing": True}],
             ),
+
+            # LiDAR Processor
+            Node(
+                package="ida_otonom",
+                executable="lidar_processor_node",
+                name="lidar_processor_node",
+                output="screen",
+                parameters=[config_file],
+            ),
+
+            # Local Costmap
+            Node(
+                package="ida_otonom",
+                executable="local_costmap_node",
+                name="local_costmap_node",
+                output="screen",
+                condition=IfCondition(enable_costmap_logger),
+                parameters=[config_file, log_params],
+            ),
+
+            # Safety
             Node(
                 package="ida_otonom",
                 executable="safety_node",
@@ -208,6 +217,8 @@ def generate_launch_description():
                 output="screen",
                 parameters=[config_file],
             ),
+
+            # RC Kill
             Node(
                 package="ida_otonom",
                 executable="rc_kill_node",
@@ -215,6 +226,8 @@ def generate_launch_description():
                 output="screen",
                 parameters=[config_file],
             ),
+
+            # Power Relay
             Node(
                 package="ida_otonom",
                 executable="power_relay_node",
@@ -222,6 +235,8 @@ def generate_launch_description():
                 output="screen",
                 parameters=[config_file],
             ),
+
+            # MAVROS Bridge
             Node(
                 package="ida_otonom",
                 executable="mavros_bridge_node",
@@ -241,6 +256,8 @@ def generate_launch_description():
                     },
                 ],
             ),
+
+            # Logger
             Node(
                 package="ida_otonom",
                 executable="logger_node",
@@ -248,6 +265,8 @@ def generate_launch_description():
                 output="screen",
                 parameters=[config_file, log_params],
             ),
+
+            # YKI Bridge
             Node(
                 package="ida_otonom",
                 executable="yki_bridge_node",

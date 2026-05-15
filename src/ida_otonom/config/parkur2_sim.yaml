@@ -15,6 +15,7 @@ parkur2_sim_node:
     scan_ray_count: 361
     detection_range_max_m: 14.0
     detection_fov_deg: 180.0
+    detection_topic: /perception/buoy_detections_raw
     course_width_m: 8.82
 
 mission_manager_node:
@@ -76,6 +77,7 @@ course_memory_node:
 
 semantic_buoy_classifier_node:
   ros__parameters:
+    require_sensor_validation: true
     course_class_names:
       - course_buoy
       - buoy
@@ -89,6 +91,15 @@ semantic_buoy_classifier_node:
     course_hue_tolerance_deg: 35.0
     strong_color_diff_deg: 55.0
     min_confidence: 0.35
+
+sensor_cross_validator_node:
+  ros__parameters:
+    input_topic: /perception/buoy_detections_raw
+    output_topic: /perception/buoy_detections
+    bearing_window_deg: 6.0
+    range_tolerance_m: 0.85
+    relative_range_tolerance: 0.30
+    allow_lidar_only: true
 
 corridor_tracker_node:
   ros__parameters:
@@ -128,6 +139,8 @@ parkur2_planner_node:
     corridor_coast_s: 1.2
     bearing_rate_limit_degps: 70.0
     sensor_timeout_s: 1.0
+    final_approach_distance_m: 14.0
+    waypoint_bias_weight: 0.20
 
 sim_visualizer_node:
   ros__parameters:

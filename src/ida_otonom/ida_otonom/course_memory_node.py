@@ -91,6 +91,9 @@ class CourseMemoryNode(Node):
             return
 
         for detection in payload.get("detections", []):
+            sensor_validation = detection.get("sensor_validation") or {}
+            if sensor_validation and not sensor_validation.get("valid", False):
+                continue
             class_name = str(detection.get("class_name", ""))
             confidence = float(detection.get("confidence", 0.0))
             if (

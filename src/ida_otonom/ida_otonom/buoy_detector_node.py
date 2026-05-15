@@ -33,6 +33,7 @@ class BuoyDetectorNode(Node):
         self.declare_parameter("assumed_horizontal_fov_deg", 87.0)
         self.declare_parameter("publish_empty_detections", True)
         self.declare_parameter("enable_yolo", True)
+        self.declare_parameter("detection_topic", "/perception/buoy_detections")
         self.declare_parameter("color_image_topic", "/camera/camera/color/image_raw")
         self.declare_parameter(
             "depth_image_topic",
@@ -69,7 +70,7 @@ class BuoyDetectorNode(Node):
 
         self.pub = self.create_publisher(
             String,
-            "/perception/buoy_detections",
+            str(self.get_parameter("detection_topic").value),
             10,
         )
         self.create_subscription(
