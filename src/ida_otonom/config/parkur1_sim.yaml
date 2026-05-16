@@ -27,7 +27,7 @@ mission_manager_node:
 
 gps_guidance_node:
   ros__parameters:
-    arrival_radius_m: 2.5
+    arrival_radius_m: 1.0
 
 controller_node:
   ros__parameters:

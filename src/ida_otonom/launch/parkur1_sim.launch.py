@@ -45,7 +45,7 @@ def generate_launch_description():
             ),
             DeclareLaunchArgument(
                 "arrival_radius_m",
-                default_value="3.0",
+                default_value="1.0",
                 description="Waypoint reached radius in meters.",
             ),
             DeclareLaunchArgument(
