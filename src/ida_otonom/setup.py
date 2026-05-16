@@ -26,6 +26,10 @@ setup(
             os.path.join('share', package_name, 'missions'),
             glob('ida_otonom/missions/*.json'),
         ),
+        (
+            os.path.join('share', package_name, 'parkurlar'),
+            glob('ida_otonom/parkurlar/*.json'),
+        ),
     ],
     install_requires=['setuptools'],
     zip_safe=True,

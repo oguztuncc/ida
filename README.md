@@ -109,6 +109,59 @@ ros2 launch ida_otonom parkur1_sim.launch.py \
 Varsayılan görev dosyası package share içinden çözülür:
 `share/ida_otonom/missions/mission.json`.
 
+## Genel Parkur Simülasyonu
+
+Özel parkur JSON dosyaları repo içinde şu klasörde tutulur:
+
+```text
+src/ida_otonom/ida_otonom/parkurlar/
+```
+
+Bu klasördeki bir parkuru simülasyonda çalıştırmak için genel launch dosyasını
+kullanın:
+
+```bash
+ros2 launch ida_otonom parkur_sim.launch.py parkur_file:=parkur1.json
+```
+
+Başka bir parkur dosyası için sadece dosya adını değiştirin:
+
+```bash
+ros2 launch ida_otonom parkur_sim.launch.py parkur_file:=test_zikzak.json
+```
+
+Dosya adı göreli verilirse `parkurlar/` altında aranır. Tam dosya yolu da
+verilebilir:
+
+```bash
+ros2 launch ida_otonom parkur_sim.launch.py \
+  parkur_file:=/home/arif/ida_tunc/ida/src/ida_otonom/ida_otonom/parkurlar/test_zikzak.json
+```
+
+Genel simülasyon varsayılan olarak `config/parkur1_sim.yaml` ve
+`missions/mission.json` kullanır. Gerekirse bunlar da override edilebilir:
+
+```bash
+ros2 launch ida_otonom parkur_sim.launch.py \
+  parkur_file:=test_zikzak.json \
+  config_file:=/path/to/config.yaml \
+  mission_file:=/path/to/mission.json \
+  arrival_radius_m:=1.0
+```
+
+Parkur editörde `Load Parkur1` veya `Load Parkur2` sadece ilgili JSON'u editöre
+yükler. Orijinal dosya ancak `Export JSON` ile aynı dosya yolunun üzerine
+kaydedilirse değişir. Örneğin `parkurlar/parkur2.json` üzerine export edilirse
+sonraki `parkur2` simülasyonu bu düzenlenmiş parkuru kullanır; farklı adla
+kaydedilirse orijinal dosya korunur.
+
+Kod veya package data değiştikten sonra kurulu paketi güncellemek için:
+
+```bash
+colcon build --packages-select ida_otonom
+source install/setup.bash
+```
+
 ## Parkur-2 LiDAR Simülasyon
 
 Bu simülasyon gerçek kamera, YOLO veya MAVROS gerektirmez. Sentetik dünya node'u

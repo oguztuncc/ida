@@ -1,4 +1,6 @@
+import json
 import math
+import os
 from dataclasses import dataclass
 
 import rclpy
@@ -7,7 +9,7 @@ from rclpy.node import Node
 from sensor_msgs.msg import LaserScan, NavSatFix
 from std_msgs.msg import Float32, String
 
-from .common import clamp, to_json
+from .common import clamp, package_share_path, to_json
 
 
 @dataclass(frozen=True)
@@ -46,6 +48,7 @@ class Parkur2SimNode(Node):
         self.declare_parameter("course_width_m", 8.82)
         self.declare_parameter("course_jitter_m", 0.0)
         self.declare_parameter("include_obstacles", True)
+        self.declare_parameter("custom_world_path", "")
 
         self.origin_lat = float(self.get_parameter("initial_lat").value)
         self.origin_lon = float(self.get_parameter("initial_lon").value)
@@ -89,6 +92,9 @@ class Parkur2SimNode(Node):
         )
         self.include_obstacles = bool(
             self.get_parameter("include_obstacles").value
+        )
+        self.custom_world_path = str(
+            self.get_parameter("custom_world_path").value
         )
 
         self.east_m = 0.0
@@ -145,28 +151,126 @@ class Parkur2SimNode(Node):
             f"{len(self.objects)} object(s), time_scale={self.time_scale:.1f}x"
         )
 
-    def _build_world(self) -> list[SimObject]:
-        if self.world_variant == "parkur1":
-            return self._build_parkur1_world()
-        return self._build_parkur2_world()
+    def _worlds_dir(self) -> str:
+        return os.path.join(str(package_share_path()), "worlds")
 
-    def _build_parkur2_world(self) -> list[SimObject]:
-        route = [
-            (0.0, 0.0),
-            (12.0, 12.0),
-            (25.0, 22.0),
-            (40.0, 35.0),
-            (55.0, 48.0),
-        ]
-        stations = [
-            (6.0, 6.0),
-            (13.0, 12.8),
-            (20.0, 18.2),
-            (28.0, 24.6),
-            (36.0, 31.4),
-            (45.0, 39.3),
-            (53.0, 46.2),
-        ]
+    def _parkurs_dir(self) -> str:
+        return os.path.join(str(package_share_path()), "parkurlar")
+
+    def _resolve_world_path(self, path: str) -> str:
+        if os.path.isabs(path):
+            return path
+        return os.path.join(self._parkurs_dir(), path)
+
+    def _build_world(self) -> list[SimObject]:
+        if self.world_variant == "custom" and self.custom_world_path:
+            path = self._resolve_world_path(self.custom_world_path)
+        else:
+            parkur_path = os.path.join(
+                self._parkurs_dir(),
+                f"{self.world_variant}.json",
+            )
+            if os.path.isfile(parkur_path):
+                path = parkur_path
+            else:
+                filename = f"{self.world_variant}_world.json"
+                path = os.path.join(self._worlds_dir(), filename)
+
+        if os.path.isfile(path):
+            try:
+                return self._build_world_from_json(path)
+            except Exception as exc:
+                self.get_logger().error(
+                    f"Failed to load world from {path}: {exc}. Falling back to legacy build."
+                )
+        else:
+            self.get_logger().warn(
+                f"World JSON not found at {path}. Falling back to legacy build."
+            )
+
+        if self.world_variant == "parkur1":
+            return self._build_parkur1_world_legacy()
+        return self._build_parkur2_world_legacy()
+
+    def _build_world_from_json(self, path: str) -> list[SimObject]:
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+
+        objects: list[SimObject] = []
+        load_method = "explicit"
+
+        # New format: explicit boundaries list (no automatic generation)
+        if "boundaries" in data:
+            for b in data.get("boundaries", []):
+                objects.append(
+                    SimObject(
+                        object_id=b["id"],
+                        kind=b.get("kind", "course_boundary"),
+                        class_name=b.get("class_name", "course_buoy"),
+                        east_m=float(b["east_m"]),
+                        north_m=float(b["north_m"]),
+                        radius_m=float(b.get("radius_m", 0.35)),
+                        hue_deg=float(b.get("hue_deg", 28.0)),
+                        color=b.get("color", "#ff8b2e"),
+                    )
+                )
+        elif "build_method" in data:
+            # Legacy format fallback
+            load_method = "legacy"
+            build_method = data.get("build_method", "station_pairs")
+            course_width = data.get("course_width_m", self.course_width_m)
+            jitter = data.get("course_jitter_m", self.course_jitter_m)
+            route = [tuple(p) for p in data.get("route", [])]
+
+            if build_method == "course_boundaries":
+                spacing = data.get("spacing_m", 7.0)
+                prefix = data.get("object_prefix", "course")
+                objects.extend(
+                    self._build_course_boundaries(
+                        route,
+                        spacing_m=spacing,
+                        object_prefix=prefix,
+                        course_width_m=course_width,
+                        course_jitter_m=jitter,
+                    )
+                )
+            elif build_method == "station_pairs":
+                stations = [tuple(p) for p in data.get("stations", [])]
+                objects.extend(
+                    self._build_station_pairs(
+                        route,
+                        stations,
+                        course_width_m=course_width,
+                    )
+                )
+            else:
+                self.get_logger().warn(f"Unknown build_method: {build_method}")
+
+        for obs in data.get("obstacles", []):
+            objects.append(
+                SimObject(
+                    object_id=obs["id"],
+                    kind=obs.get("kind", "obstacle"),
+                    class_name=obs.get("class_name", "obstacle_buoy"),
+                    east_m=float(obs["east_m"]),
+                    north_m=float(obs["north_m"]),
+                    radius_m=float(obs.get("radius_m", 0.7)),
+                    hue_deg=float(obs.get("hue_deg", 62.0)),
+                    color=obs.get("color", "#ffe15a"),
+                )
+            )
+
+        self.get_logger().info(
+            f"Loaded world from {path}: {len(objects)} objects ({load_method})"
+        )
+        return objects
+
+    def _build_station_pairs(
+        self,
+        route: list[tuple[float, float]],
+        stations: list[tuple[float, float]],
+        course_width_m: float,
+    ) -> list[SimObject]:
         objects = []
         previous = route[0]
         for index, center in enumerate(stations):
@@ -176,7 +280,7 @@ class Parkur2SimNode(Node):
             length = max(math.hypot(dx, dy), 1e-6)
             left_x = -dy / length
             left_y = dx / length
-            offset = self.course_width_m / 2.0
+            offset = course_width_m / 2.0
             for side, sign in (("left", 1.0), ("right", -1.0)):
                 east = center[0] + left_x * offset * sign
                 north = center[1] + left_y * offset * sign
@@ -193,6 +297,108 @@ class Parkur2SimNode(Node):
                     )
                 )
             previous = center
+        return objects
+
+    def _build_course_boundaries(
+        self,
+        route: list[tuple[float, float]],
+        spacing_m: float,
+        object_prefix: str,
+        course_width_m: float,
+        course_jitter_m: float,
+    ) -> list[SimObject]:
+        objects = []
+        half_width = course_width_m / 2.0
+        station_index = 0
+        for start, end in zip(route, route[1:]):
+            dx = end[0] - start[0]
+            dy = end[1] - start[1]
+            length = math.hypot(dx, dy)
+            if length <= 1e-6:
+                continue
+            forward_x = dx / length
+            forward_y = dy / length
+            left_x = -forward_y
+            left_y = forward_x
+            count = max(1, int(round(length / max(spacing_m, 0.5))))
+            for index in range(count):
+                t = (index + 0.5) / count
+                center_east = start[0] + dx * t
+                center_north = start[1] + dy * t
+                for side, sign in (("left", 1.0), ("right", -1.0)):
+                    phase = station_index * 1.37 + (
+                        0.0 if sign > 0.0 else 2.1
+                    )
+                    lateral_jitter = math.sin(phase) * course_jitter_m
+                    forward_jitter = (
+                        math.cos(phase * 0.7) * course_jitter_m * 0.5
+                    )
+                    offset = max(1.0, half_width + lateral_jitter)
+                    east = (
+                        center_east
+                        + left_x * offset * sign
+                        + forward_x * forward_jitter
+                    )
+                    north = (
+                        center_north
+                        + left_y * offset * sign
+                        + forward_y * forward_jitter
+                    )
+                    objects.append(
+                        SimObject(
+                            object_id=f"{object_prefix}_{side}_{station_index}",
+                            kind="course_boundary",
+                            class_name="course_buoy",
+                            east_m=east,
+                            north_m=north,
+                            radius_m=0.35,
+                            hue_deg=28.0,
+                            color="#ff8b2e",
+                        )
+                    )
+                station_index += 1
+        return objects
+
+    def _build_parkur1_world_legacy(self) -> list[SimObject]:
+        route = [
+            (0.0, 0.0),
+            (16.0, 15.0),
+            (34.0, 34.0),
+            (50.0, 56.0),
+            (67.0, 76.0),
+            (84.0, 94.0),
+            (101.0, 111.0),
+        ]
+        return self._build_course_boundaries(
+            route,
+            spacing_m=7.0,
+            object_prefix="parkur1_course",
+            course_width_m=self.course_width_m,
+            course_jitter_m=self.course_jitter_m,
+        )
+
+    def _build_parkur2_world_legacy(self) -> list[SimObject]:
+        route = [
+            (0.0, 0.0),
+            (12.0, 12.0),
+            (25.0, 22.0),
+            (40.0, 35.0),
+            (55.0, 48.0),
+        ]
+        stations = [
+            (6.0, 6.0),
+            (13.0, 12.8),
+            (20.0, 18.2),
+            (28.0, 24.6),
+            (36.0, 31.4),
+            (45.0, 39.3),
+            (53.0, 46.2),
+        ]
+        objects = self._build_station_pairs(
+            route,
+            stations,
+            course_width_m=self.course_width_m,
+        )
 
         if self.include_obstacles:
             objects.extend(
@@ -229,80 +435,6 @@ class Parkur2SimNode(Node):
                     ),
                 ]
             )
-        return objects
-
-    def _build_parkur1_world(self) -> list[SimObject]:
-        route = [
-            (0.0, 0.0),
-            (16.0, 15.0),
-            (34.0, 34.0),
-            (50.0, 56.0),
-            (67.0, 76.0),
-            (84.0, 94.0),
-            (101.0, 111.0),
-        ]
-        return self._build_course_boundaries(
-            route,
-            spacing_m=7.0,
-            object_prefix="parkur1_course",
-        )
-
-    def _build_course_boundaries(
-        self,
-        route: list[tuple[float, float]],
-        spacing_m: float,
-        object_prefix: str,
-    ) -> list[SimObject]:
-        objects = []
-        half_width = self.course_width_m / 2.0
-        station_index = 0
-        for start, end in zip(route, route[1:]):
-            dx = end[0] - start[0]
-            dy = end[1] - start[1]
-            length = math.hypot(dx, dy)
-            if length <= 1e-6:
-                continue
-            forward_x = dx / length
-            forward_y = dy / length
-            left_x = -forward_y
-            left_y = forward_x
-            count = max(1, int(round(length / max(spacing_m, 0.5))))
-            for index in range(count):
-                t = (index + 0.5) / count
-                center_east = start[0] + dx * t
-                center_north = start[1] + dy * t
-                for side, sign in (("left", 1.0), ("right", -1.0)):
-                    phase = station_index * 1.37 + (
-                        0.0 if sign > 0.0 else 2.1
-                    )
-                    lateral_jitter = math.sin(phase) * self.course_jitter_m
-                    forward_jitter = (
-                        math.cos(phase * 0.7) * self.course_jitter_m * 0.5
-                    )
-                    offset = max(1.0, half_width + lateral_jitter)
-                    east = (
-                        center_east
-                        + left_x * offset * sign
-                        + forward_x * forward_jitter
-                    )
-                    north = (
-                        center_north
-                        + left_y * offset * sign
-                        + forward_y * forward_jitter
-                    )
-                    objects.append(
-                        SimObject(
-                            object_id=f"{object_prefix}_{side}_{station_index}",
-                            kind="course_boundary",
-                            class_name="course_buoy",
-                            east_m=east,
-                            north_m=north,
-                            radius_m=0.35,
-                            hue_deg=28.0,
-                            color="#ff8b2e",
-                        )
-                    )
-                station_index += 1
         return objects
 
     def cmd_cb(self, msg: Twist) -> None:
