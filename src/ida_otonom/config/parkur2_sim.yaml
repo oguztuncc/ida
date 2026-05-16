@@ -112,7 +112,7 @@ parkur2_planner_node:
     max_speed_mps: 0.30
     approach_speed_mps: 0.15
     danger_distance_m: 0.70
-    avoid_start_distance_m: 3.20
+    avoid_start_distance_m: 2.5
     emergency_stop_distance_m: 0.45
     safe_clearance_m: 1.50
     max_relative_bearing_deg: 35.0
@@ -121,6 +121,7 @@ parkur2_planner_node:
     corridor_min_confidence: 0.45
     corridor_keepout_margin_m: 1.20
     obstacle_pass_margin_m: 1.20
+    path_block_margin_m: 1.20
     pass_lookahead_m: 6.0
     return_lookahead_m: 6.0
     pass_min_duration_s: 1.5

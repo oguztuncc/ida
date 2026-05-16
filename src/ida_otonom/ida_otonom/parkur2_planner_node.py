@@ -23,6 +23,7 @@ class Parkur2PlannerNode(Node):
         self.declare_parameter("corridor_min_confidence", 0.45)
         self.declare_parameter("corridor_keepout_margin_m", 1.20)
         self.declare_parameter("obstacle_pass_margin_m", 1.20)
+        self.declare_parameter("path_block_margin_m", 0.0)
         self.declare_parameter("pass_lookahead_m", 6.0)
         self.declare_parameter("return_lookahead_m", 6.0)
         self.declare_parameter("pass_min_duration_s", 1.5)
@@ -79,6 +80,14 @@ class Parkur2PlannerNode(Node):
         )
         self.obstacle_pass_margin_m = float(
             self.get_parameter("obstacle_pass_margin_m").value
+        )
+        configured_path_block_margin = float(
+            self.get_parameter("path_block_margin_m").value
+        )
+        self.path_block_margin_m = (
+            configured_path_block_margin
+            if configured_path_block_margin > 0.0
+            else max(self.safe_clearance_m, self.obstacle_pass_margin_m)
         )
         self.pass_lookahead_m = float(
             self.get_parameter("pass_lookahead_m").value
@@ -314,9 +323,13 @@ class Parkur2PlannerNode(Node):
         if forward <= -0.2 or forward > self.avoid_start_distance_m:
             return False
 
+        path_left = 0.0 if corridor is None else float(corridor["center_left_m"])
+        if abs(left - path_left) > self.path_block_margin_m:
+            return False
+
         bounds = self._corridor_bounds(corridor)
         if bounds is None:
-            return abs(left) <= self.safe_clearance_m
+            return True
 
         min_left, max_left = bounds
         return min_left <= left <= max_left
