@@ -53,8 +53,9 @@ local_costmap_node:
 
 lidar_processor_node:
   ros__parameters:
-    collision_distance_m: 0.90
+    collision_distance_m: 1.20
     sector_width_deg: 40.0
+    front_path_half_width_m: 0.70
     max_avoidance_angle_deg: 65.0
     min_avoidance_angle_deg: 40.0
     candidate_step_deg: 5.0
@@ -104,32 +105,32 @@ corridor_tracker_node:
     max_center_step_m: 0.6
     obstacle_avoidance_enabled: false
     obstacle_avoidance_range_m: 8.0
-    obstacle_avoidance_margin_m: 0.80
-    obstacle_max_offset_m: 1.50
+    obstacle_avoidance_margin_m: 2.20
+    obstacle_max_offset_m: 1.80
 
 parkur2_planner_node:
   ros__parameters:
-    max_speed_mps: 0.30
+    max_speed_mps: 0.28
     approach_speed_mps: 0.15
-    danger_distance_m: 0.70
-    emergency_stop_distance_m: 0.45
-    safe_clearance_m: 0.8
+    danger_distance_m: 1.20
+    emergency_stop_distance_m: 0.55
+    safe_clearance_m: 1.0
     max_relative_bearing_deg: 35.0
-    max_pass_bearing_deg: 25.0
-    max_return_bearing_deg: 18.0
+    max_pass_bearing_deg: 32.0
+    max_return_bearing_deg: 14.0
     corridor_min_confidence: 0.35
     corridor_keepout_margin_m: 1.20
-    obstacle_pass_margin_m: 1.20
-    path_block_margin_m: 1.20
-    pass_lookahead_m: 6.0
-    return_lookahead_m: 6.0
-    pass_min_duration_s: 1.5
-    pass_release_after_lost_s: 1.0
+    obstacle_pass_margin_m: 1.80
+    path_block_margin_m: 2.30
+    pass_lookahead_m: 3.0
+    return_lookahead_m: 8.0
+    pass_min_duration_s: 4.0
+    pass_release_after_lost_s: 5.0
     corridor_coast_s: 2.0
-    bearing_rate_limit_degps: 45.0
+    bearing_rate_limit_degps: 80.0
     sensor_timeout_s: 1.0
     waypoint_blend_factor: 0.0
-    avoid_start_distance_m: 2.5
+    avoid_start_distance_m: 5.0
     expected_corridor_width_m: 8.82
 
 sim_visualizer_node:

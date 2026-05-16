@@ -21,6 +21,7 @@ class LidarProcessorNode(Node):
         self.declare_parameter("candidate_sector_width_deg", 18.0)
         self.declare_parameter("avoidance_release_distance_m", 5.0)
         self.declare_parameter("latch_avoidance_direction", True)
+        self.declare_parameter("front_path_half_width_m", 0.70)
 
         self.collision_distance_m = float(
             self.get_parameter("collision_distance_m").value
@@ -46,6 +47,10 @@ class LidarProcessorNode(Node):
         )
         self.latch_avoidance_direction = bool(
             self.get_parameter("latch_avoidance_direction").value
+        )
+        self.front_path_half_width_m = max(
+            0.1,
+            float(self.get_parameter("front_path_half_width_m").value),
         )
         self.last_best_angle_deg = 0.0
         self.avoidance_sign = 0.0
@@ -86,6 +91,16 @@ class LidarProcessorNode(Node):
             if abs(normalize_angle_deg(a - center_deg)) <= half
         ]
         return self._sector_min(window)
+
+    def _front_path_clearance(self, values: List[Tuple[float, float]]) -> float:
+        forward_distances = []
+        for angle_deg, distance in values:
+            angle_rad = math.radians(angle_deg)
+            forward = distance * math.cos(angle_rad)
+            left = distance * math.sin(angle_rad)
+            if forward > 0.05 and abs(left) <= self.front_path_half_width_m:
+                forward_distances.append(forward)
+        return min(forward_distances) if forward_distances else 999.0
 
     def _preferred_escape_sign(
         self,
@@ -169,16 +184,20 @@ class LidarProcessorNode(Node):
         ]
 
         front_min = self._sector_min(front)
+        front_path_min = self._front_path_clearance(values)
         left_min = self._sector_min(left)
         right_min = self._sector_min(right)
 
-        collision = front_min < self.collision_distance_m
+        collision = front_path_min < self.collision_distance_m
         best_angle, best_clearance = self._best_free_angle(values, front_min)
 
         payload = {
             "timestamp": now_ts(),
             "collision_imminent": collision,
             "front_clearance_m": front_min,
+            "front_sector_clearance_m": front_min,
+            "front_path_clearance_m": front_path_min,
+            "front_path_half_width_m": self.front_path_half_width_m,
             "left_clearance_m": left_min,
             "right_clearance_m": right_min,
             "best_free_angle_deg": best_angle,
