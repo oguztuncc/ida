@@ -19,9 +19,9 @@ def generate_launch_description():
     enable_costmap_logger = LaunchConfiguration("enable_costmap_logger")
     enable_visualizer = LaunchConfiguration("enable_visualizer")
     enable_corridor_planning = LaunchConfiguration("enable_corridor_planning")
+    enable_geofence = LaunchConfiguration("enable_geofence")
     enable_yki_bridge = LaunchConfiguration("enable_yki_bridge")
-    yki_udp_ip = LaunchConfiguration("yki_udp_ip")
-    yki_udp_port = LaunchConfiguration("yki_udp_port")
+    yki_mavlink_url = LaunchConfiguration("yki_mavlink_url")
 
     default_config = PathJoinSubstitution(
         [FindPackageShare("ida_otonom"), "config", "parkur1_sim.yaml"]
@@ -97,19 +97,19 @@ def generate_launch_description():
                 ),
             ),
             DeclareLaunchArgument(
+                "enable_geofence",
+                default_value="true",
+                description="Monitor GPS course boundary and recover inward.",
+            ),
+            DeclareLaunchArgument(
                 "enable_yki_bridge",
                 default_value="false",
-                description="Start UDP telemetry bridge to YKI.",
+                description="Start MAVLink telemetry bridge to YKI.",
             ),
             DeclareLaunchArgument(
-                "yki_udp_ip",
-                default_value="127.0.0.1",
-                description="YKI UDP target IP.",
-            ),
-            DeclareLaunchArgument(
-                "yki_udp_port",
-                default_value="5005",
-                description="YKI UDP target port.",
+                "yki_mavlink_url",
+                default_value="udpout:127.0.0.1:14550",
+                description="MAVLink connection URL for YKI telemetry/commands.",
             ),
             Node(
                 package="ida_otonom",
@@ -174,6 +174,14 @@ def generate_launch_description():
                         )
                     },
                 ],
+            ),
+            Node(
+                package="ida_otonom",
+                executable="geofence_monitor_node",
+                name="geofence_monitor_node",
+                output="screen",
+                condition=IfCondition(enable_geofence),
+                parameters=[config_file, common_mission_params],
             ),
             Node(
                 package="ida_otonom",
@@ -275,15 +283,9 @@ def generate_launch_description():
                 condition=IfCondition(enable_yki_bridge),
                 parameters=[
                     {
-                        "udp_ip": ParameterValue(
-                            yki_udp_ip,
+                        "mavlink_connection_url": ParameterValue(
+                            yki_mavlink_url,
                             value_type=str,
-                        )
-                    },
-                    {
-                        "udp_port": ParameterValue(
-                            yki_udp_port,
-                            value_type=int,
                         )
                     },
                 ],

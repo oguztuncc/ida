@@ -17,6 +17,8 @@ class CourseMemoryNode(Node):
         super().__init__("course_memory_node")
 
         self.declare_parameter("learn_until_waypoint_index", 0)
+        self.declare_parameter("continue_until_min_samples", True)
+        self.declare_parameter("max_learning_waypoint_index", 2)
         self.declare_parameter("min_samples", 8)
         self.declare_parameter("min_detection_confidence", 0.45)
         self.declare_parameter("course_class_names", ["course_buoy", "buoy"])
@@ -25,6 +27,12 @@ class CourseMemoryNode(Node):
 
         self.learn_until_waypoint_index = int(
             self.get_parameter("learn_until_waypoint_index").value
+        )
+        self.continue_until_min_samples = bool(
+            self.get_parameter("continue_until_min_samples").value
+        )
+        self.max_learning_waypoint_index = int(
+            self.get_parameter("max_learning_waypoint_index").value
         )
         self.min_samples = int(self.get_parameter("min_samples").value)
         self.min_detection_confidence = float(
@@ -69,7 +77,13 @@ class CourseMemoryNode(Node):
         self.active_waypoint_index = int(msg.data)
 
     def _is_learning_phase(self) -> bool:
-        return self.active_waypoint_index <= self.learn_until_waypoint_index
+        if self.active_waypoint_index <= self.learn_until_waypoint_index:
+            return True
+        if not self.continue_until_min_samples:
+            return False
+        if len(self.samples) >= self.min_samples:
+            return False
+        return self.active_waypoint_index <= self.max_learning_waypoint_index
 
     def _usable_hsv(self, detection: dict) -> Optional[Tuple[float, float, float]]:
         hsv = detection.get("mean_hsv")
@@ -140,6 +154,9 @@ class CourseMemoryNode(Node):
             "timestamp": now_ts(),
             "learning_phase": self._is_learning_phase(),
             "active_waypoint_index": self.active_waypoint_index,
+            "learn_until_waypoint_index": self.learn_until_waypoint_index,
+            "max_learning_waypoint_index": self.max_learning_waypoint_index,
+            "continue_until_min_samples": self.continue_until_min_samples,
             "profile": profile,
         }
         self.pub.publish(String(data=to_json(payload)))

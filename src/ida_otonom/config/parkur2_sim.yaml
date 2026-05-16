@@ -26,6 +26,15 @@ gps_guidance_node:
   ros__parameters:
     arrival_radius_m: 2.0
 
+geofence_monitor_node:
+  ros__parameters:
+    enabled: true
+    generated_half_width_m: 7.0
+    outside_grace_s: 0.5
+    outside_penalty_s: 40.0
+    return_speed_mps: 0.14
+    publish_rate_hz: 4.0
+
 controller_node:
   ros__parameters:
     kp_heading: 0.017
@@ -33,6 +42,8 @@ controller_node:
     max_angular_speed: 0.42
     use_planner_bearing: true
     planner_timeout_s: 0.8
+    allow_reverse_planner_speed: true
+    geofence_timeout_s: 0.8
 
 safety_node:
   ros__parameters:
@@ -125,6 +136,11 @@ parkur2_planner_node:
     danger_distance_m: 0.70
     avoid_start_distance_m: 3.20
     emergency_stop_distance_m: 0.45
+    contact_recovery_enabled: true
+    contact_recovery_distance_m: 0.30
+    recovery_backoff_duration_s: 1.2
+    recovery_backoff_speed_mps: -0.12
+    recovery_turn_bearing_deg: 25.0
     safe_clearance_m: 1.50
     max_relative_bearing_deg: 35.0
     max_pass_bearing_deg: 25.0
@@ -139,6 +155,10 @@ parkur2_planner_node:
     corridor_coast_s: 1.2
     bearing_rate_limit_degps: 70.0
     sensor_timeout_s: 1.0
+    scan_before_bypass: true
+    scan_duration_s: 1.0
+    scan_spin_angle_deg: 35.0
+    scan_cooldown_s: 1.5
     final_approach_distance_m: 14.0
     waypoint_bias_weight: 0.20
 

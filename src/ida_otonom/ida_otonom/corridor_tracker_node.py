@@ -162,6 +162,43 @@ class CorridorTrackerNode(Node):
 
         return offset
 
+    def _nearest_obstacle_info(
+        self,
+        buoys: List[dict],
+        left_boundary: Optional[float],
+        right_boundary: Optional[float],
+    ) -> Optional[dict]:
+        nearest = None
+        for buoy in buoys:
+            if not self._usable_obstacle(buoy):
+                continue
+            forward = float(buoy["forward_m"])
+            left = float(buoy["left_m"])
+            if nearest is None or forward < nearest["forward_m"]:
+                nearest = {
+                    "id": buoy.get("id"),
+                    "forward_m": forward,
+                    "left_m": left,
+                    "range_m": buoy.get("range_m"),
+                    "bearing_deg": buoy.get("bearing_deg"),
+                    "semantic": buoy.get("semantic"),
+                }
+
+        if nearest is None:
+            return None
+
+        if left_boundary is not None and right_boundary is not None:
+            nearest["inside_corridor"] = (
+                right_boundary <= nearest["left_m"] <= left_boundary
+            )
+            nearest["clearance_left_m"] = left_boundary - nearest["left_m"]
+            nearest["clearance_right_m"] = nearest["left_m"] - right_boundary
+        else:
+            nearest["inside_corridor"] = None
+            nearest["clearance_left_m"] = None
+            nearest["clearance_right_m"] = None
+        return nearest
+
     def _side_estimate(self, buoys: List[dict]) -> Optional[dict]:
         weighted = []
         for buoy in buoys:
@@ -352,9 +389,14 @@ class CorridorTrackerNode(Node):
             confidence = self._single_sided_confidence(right_estimate)
             tracking_method = "right_side_expected_width"
 
-        # Apply obstacle-aware lateral offset
+        # Corridor tracking only reports geometry. The planner owns obstacle
+        # avoidance, so this offset should remain disabled in real runs.
         obstacle_offset = 0.0
+        nearest_obstacle = None
         if raw_center_left is not None:
+            nearest_obstacle = self._nearest_obstacle_info(
+                all_buoys, left_boundary, right_boundary
+            )
             obstacle_offset = self._obstacle_offset(
                 all_buoys, left_boundary, right_boundary
             )
@@ -392,6 +434,10 @@ class CorridorTrackerNode(Node):
                         "min_gate_width_m": self.min_gate_width_m,
                         "tracking_method": tracking_method,
                         "obstacle_offset_m": obstacle_offset,
+                        "nearest_obstacle": nearest_obstacle,
+                        "obstacle_report_only": (
+                            not self.obstacle_avoidance_enabled
+                        ),
                         "gate": gate,
                     }
                 )

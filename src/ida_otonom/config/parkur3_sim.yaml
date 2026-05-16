@@ -31,6 +31,15 @@ gps_guidance_node:
   ros__parameters:
     arrival_radius_m: 2.0
 
+geofence_monitor_node:
+  ros__parameters:
+    enabled: true
+    generated_half_width_m: 7.0
+    outside_grace_s: 0.5
+    outside_penalty_s: 40.0
+    return_speed_mps: 0.12
+    publish_rate_hz: 4.0
+
 controller_node:
   ros__parameters:
     kp_heading: 0.024
@@ -38,6 +47,7 @@ controller_node:
     max_angular_speed: 0.6
     use_planner_bearing: true
     planner_timeout_s: 0.8
+    geofence_timeout_s: 0.8
 
 safety_node:
   ros__parameters:

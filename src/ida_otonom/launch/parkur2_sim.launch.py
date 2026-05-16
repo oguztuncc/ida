@@ -17,6 +17,7 @@ def generate_launch_description():
     enable_logger = LaunchConfiguration("enable_logger")
     enable_costmap_logger = LaunchConfiguration("enable_costmap_logger")
     enable_visualizer = LaunchConfiguration("enable_visualizer")
+    enable_geofence = LaunchConfiguration("enable_geofence")
 
     default_config = PathJoinSubstitution(
         [FindPackageShare("ida_otonom"), "config", "parkur2_sim.yaml"]
@@ -77,6 +78,11 @@ def generate_launch_description():
                 default_value="true",
                 description="Start Parkur-2 turtle-style visualizer.",
             ),
+            DeclareLaunchArgument(
+                "enable_geofence",
+                default_value="true",
+                description="Monitor GPS course boundary and recover inward.",
+            ),
             Node(
                 package="ida_otonom",
                 executable="parkur2_sim_node",
@@ -120,6 +126,14 @@ def generate_launch_description():
                 executable="gps_guidance_node",
                 name="gps_guidance_node",
                 output="screen",
+                parameters=[config_file, mission_params],
+            ),
+            Node(
+                package="ida_otonom",
+                executable="geofence_monitor_node",
+                name="geofence_monitor_node",
+                output="screen",
+                condition=IfCondition(enable_geofence),
                 parameters=[config_file, mission_params],
             ),
             Node(

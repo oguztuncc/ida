@@ -1,6 +1,6 @@
 import rclpy
 from rclpy.node import Node
-from std_msgs.msg import String
+from std_msgs.msg import Bool, String
 
 
 class ColorReceiverNode(Node):
@@ -27,6 +27,7 @@ class ColorReceiverNode(Node):
         self.target_color = ""
         self.color_received = False
         self.color_received_ts = 0.0
+        self.mission_started = False
         default_color = str(self.get_parameter("default_color").value)
         if default_color:
             validated = self._validate_color(default_color)
@@ -61,6 +62,12 @@ class ColorReceiverNode(Node):
             self.iha_color_cb,
             10,
         )
+        self.create_subscription(
+            Bool,
+            "/mission/started",
+            self.mission_started_cb,
+            10,
+        )
         # Manuel test için
         self.create_subscription(
             String,
@@ -91,6 +98,11 @@ class ColorReceiverNode(Node):
 
     def _set_color(self, color: str) -> None:
         """Hedef rengi ayarla."""
+        if self.mission_started:
+            self.get_logger().warn(
+                "Target color update ignored after mission start"
+            )
+            return
         validated = self._validate_color(color)
         if validated is None:
             self.get_logger().warn(
@@ -111,6 +123,9 @@ class ColorReceiverNode(Node):
             return
         self._set_color(msg.data)
 
+    def mission_started_cb(self, msg: Bool) -> None:
+        self.mission_started = bool(msg.data)
+
     def manual_color_cb(self, msg: String) -> None:
         """Manuel test için renk mesajı."""
         if not msg.data:
@@ -128,6 +143,7 @@ class ColorReceiverNode(Node):
         status = {
             "color_received": self.color_received,
             "target_color": self.target_color,
+            "mission_started": self.mission_started,
             "valid_colors": self.valid_colors,
             "elapsed_since_color_s": (
                 now - self.color_received_ts if self.color_received else -1.0

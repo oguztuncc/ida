@@ -1,29 +1,46 @@
 mission_manager_node:
   ros__parameters:
     auto_start: false
+    allow_runtime_mission_load: true
+    allow_mission_reload_while_started: false
+    require_runtime_mission_load: true
+    min_runtime_waypoints: 1
+    max_runtime_waypoints: 100
 
 gps_guidance_node:
   ros__parameters:
     arrival_radius_m: 3.0
+
+geofence_monitor_node:
+  ros__parameters:
+    enabled: true
+    generated_half_width_m: 7.0
+    outside_grace_s: 1.0
+    outside_penalty_s: 40.0
+    return_speed_mps: 0.12
+    publish_rate_hz: 2.0
 
 controller_node:
   ros__parameters:
     kp_heading: 0.02
     max_linear_speed: 0.35
     max_angular_speed: 0.6
-    use_planner_bearing: false
+    use_planner_bearing: true
     planner_timeout_s: 0.5
+    allow_reverse_planner_speed: true
+    geofence_timeout_s: 1.0
 
 safety_node:
   ros__parameters:
     input_topic: /control/cmd_vel
     output_topic: /control/cmd_vel_safe
     latch_kill: true
+    block_reset_on_physical_kill: true
 
 mavros_bridge_node:
   ros__parameters:
-    enabled: false
-    output_mode: disabled
+    enabled: true
+    output_mode: manual_control
     input_topic: /control/cmd_vel_safe
     cmd_vel_output_topic: /mavros/setpoint_velocity/cmd_vel_unstamped
     manual_control_topic: /mavros/manual_control/send
@@ -49,13 +66,47 @@ power_relay_node:
     active_low: false
     initial_motor_power_enabled: false
 
+remote_kill_node:
+  ros__parameters:
+    enabled: false
+    port: /dev/ttyUSB0
+    baud_rate: 115200
+    read_timeout_s: 0.02
+    heartbeat_timeout_s: 1.0
+    failsafe_on_timeout: true
+    active_tokens:
+      - KILL_ACTIVE
+      - KILL
+      - ACTIVE
+      - "1"
+    clear_tokens:
+      - KILL_CLEAR
+      - CLEAR
+      - SAFE
+      - "0"
+    heartbeat_tokens:
+      - HEARTBEAT
+      - HB
+      - OK
+
+power_monitor_node:
+  ros__parameters:
+    enabled: false
+    port: /dev/ttyUSB1
+    baud_rate: 115200
+    read_timeout_s: 0.02
+    stale_timeout_s: 2.0
+
 yki_bridge_node:
   ros__parameters:
-    udp_ip: 127.0.0.1
-    udp_port: 5005
+    mavlink_connection_url: udpout:127.0.0.1:14550
+    mavlink_baud_rate: 57600
+    mavlink_source_system: 42
+    mavlink_source_component: 191
+    mavlink_send_statustext: true
     enable_command_rx: true
-    command_bind_ip: 0.0.0.0
-    command_bind_port: 5006
+    enable_mission_rx: true
+    max_mavlink_mission_items: 100
 
 logger_node:
   ros__parameters:
@@ -84,10 +135,16 @@ buoy_detector_node:
     camera_info_topic: /camera/camera/color/camera_info
     assumed_horizontal_fov_deg: 87.0
     publish_empty_detections: true
+    detection_topic: /perception/buoy_detections_raw
+    enable_video_recording: true
+    record_dir: /tmp/ida_otonom_logs
+    record_fps: 10.0
 
 course_memory_node:
   ros__parameters:
-    learn_until_waypoint_index: 0
+    learn_until_waypoint_index: 1
+    continue_until_min_samples: true
+    max_learning_waypoint_index: 2
     min_samples: 8
     min_detection_confidence: 0.45
     course_class_names:
@@ -136,7 +193,7 @@ corridor_tracker_node:
     max_boundary_range_m: 8.0
     center_smoothing_alpha: 0.25
     max_center_step_m: 0.6
-    obstacle_avoidance_enabled: true
+    obstacle_avoidance_enabled: false
     obstacle_avoidance_range_m: 8.0
     obstacle_avoidance_margin_m: 0.80
     obstacle_max_offset_m: 1.50
@@ -147,17 +204,21 @@ parkur2_planner_node:
     approach_speed_mps: 0.15
     danger_distance_m: 0.60
     avoid_start_distance_m: 1.20
+    emergency_stop_distance_m: 0.45
+    contact_recovery_enabled: true
+    contact_recovery_distance_m: 0.30
+    recovery_backoff_duration_s: 1.2
+    recovery_backoff_speed_mps: -0.10
+    recovery_turn_bearing_deg: 25.0
     safe_clearance_m: 1.50
     max_relative_bearing_deg: 55.0
     corridor_min_confidence: 0.55
     sensor_timeout_s: 1.0
     scan_before_bypass: true
-    scan_duration_s: 2.0
-    scan_spin_angle_deg: 65.0
-    scan_cooldown_s: 2.0
-    bypass_hold_s: 3.0
+    scan_duration_s: 1.0
+    scan_spin_angle_deg: 35.0
+    scan_cooldown_s: 1.5
     obstacle_pass_margin_m: 1.10
-    bypass_lookahead_m: 3.0
     require_corridor_for_motion: true
     corridor_search_angle_deg: 35.0
     final_approach_distance_m: 14.0

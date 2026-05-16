@@ -17,6 +17,7 @@ def generate_launch_description():
     enable_logger = LaunchConfiguration("enable_logger")
     enable_costmap_logger = LaunchConfiguration("enable_costmap_logger")
     enable_visualizer = LaunchConfiguration("enable_visualizer")
+    enable_geofence = LaunchConfiguration("enable_geofence")
 
     default_config = PathJoinSubstitution(
         [FindPackageShare("ida_otonom"), "config", "unified_sim.yaml"]
@@ -72,6 +73,11 @@ def generate_launch_description():
                 default_value="true",
                 description="Start unified simulation visualizer.",
             ),
+            DeclareLaunchArgument(
+                "enable_geofence",
+                default_value="true",
+                description="Monitor GPS course boundary and recover inward.",
+            ),
 
             # Unified Simülasyon Node (Tek dünya, her iki parkur)
             Node(
@@ -124,6 +130,14 @@ def generate_launch_description():
                         )
                     },
                 ],
+            ),
+            Node(
+                package="ida_otonom",
+                executable="geofence_monitor_node",
+                name="geofence_monitor_node",
+                output="screen",
+                condition=IfCondition(enable_geofence),
+                parameters=[config_file],
             ),
 
             # Controller

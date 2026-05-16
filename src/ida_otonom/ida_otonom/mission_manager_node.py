@@ -1,4 +1,5 @@
 import json
+from typing import Any, Dict, List, Optional, Tuple
 
 import rclpy
 from rclpy.node import Node
@@ -19,6 +20,11 @@ class MissionManagerNode(Node):
         self.declare_parameter("transition_delay_s", 2.0)  # Missionlar arası bekleme
         self.declare_parameter("disable_waypoint_completion", False)
         self.declare_parameter("complete_on_parkur3", False)
+        self.declare_parameter("allow_runtime_mission_load", True)
+        self.declare_parameter("allow_mission_reload_while_started", False)
+        self.declare_parameter("require_runtime_mission_load", False)
+        self.declare_parameter("min_runtime_waypoints", 1)
+        self.declare_parameter("max_runtime_waypoints", 100)
 
         self.enable_multi_mission = bool(
             self.get_parameter("enable_multi_mission").value
@@ -31,6 +37,21 @@ class MissionManagerNode(Node):
         )
         self.complete_on_parkur3 = bool(
             self.get_parameter("complete_on_parkur3").value
+        )
+        self.allow_runtime_mission_load = bool(
+            self.get_parameter("allow_runtime_mission_load").value
+        )
+        self.allow_mission_reload_while_started = bool(
+            self.get_parameter("allow_mission_reload_while_started").value
+        )
+        self.require_runtime_mission_load = bool(
+            self.get_parameter("require_runtime_mission_load").value
+        )
+        self.min_runtime_waypoints = int(
+            self.get_parameter("min_runtime_waypoints").value
+        )
+        self.max_runtime_waypoints = int(
+            self.get_parameter("max_runtime_waypoints").value
         )
 
         # Mission dosyalarını hazırla
@@ -70,6 +91,11 @@ class MissionManagerNode(Node):
             10,
         )
         self.status_pub = self.create_publisher(String, "/mission/status", 10)
+        self.load_status_pub = self.create_publisher(
+            String,
+            "/mission/load_status",
+            10,
+        )
         self.started_pub = self.create_publisher(Bool, "/mission/started", 10)
         self.done_pub = self.create_publisher(Bool, "/mission/completed", 10)
         self.all_done_pub = self.create_publisher(
@@ -103,6 +129,12 @@ class MissionManagerNode(Node):
         )
         self.create_subscription(Bool, "/mission/start", self.start_cb, 10)
         self.create_subscription(
+            String,
+            "/mission/load",
+            self.load_runtime_mission_cb,
+            10,
+        )
+        self.create_subscription(
             Bool,
             "/parkur3/complete",
             self.parkur3_complete_cb,
@@ -112,7 +144,12 @@ class MissionManagerNode(Node):
         self.timer = self.create_timer(1.0, self.loop)
 
         # İlk mission'ı yükle
-        self.load_current_mission()
+        if self.require_runtime_mission_load:
+            self.get_logger().info(
+                "Waiting for runtime mission load from YKI"
+            )
+        else:
+            self.load_current_mission()
 
     def load_current_mission(self) -> bool:
         """Mevcut mission index'indeki mission'ı yükler."""
@@ -130,9 +167,12 @@ class MissionManagerNode(Node):
 
         try:
             data = json.loads(path.read_text(encoding="utf-8"))
-            self.waypoints = data.get("waypoints", [])
-            if not self.waypoints:
-                raise ValueError("No waypoints found in mission file")
+            waypoints = self._validate_waypoints(
+                data.get("waypoints", []),
+                min_count=1,
+                max_count=max(self.max_runtime_waypoints, 1),
+            )
+            self.waypoints = waypoints
 
             self.mission_loaded = True
             self.mission_started = self.auto_start
@@ -153,6 +193,122 @@ class MissionManagerNode(Node):
         except Exception as exc:
             self.get_logger().error(f"Mission load failed: {exc}")
             return False
+
+    def load_runtime_mission_cb(self, msg: String) -> None:
+        if not self.allow_runtime_mission_load:
+            self._publish_load_status(False, "runtime mission load disabled")
+            return
+
+        if self.mission_started and not self.allow_mission_reload_while_started:
+            self._publish_load_status(
+                False,
+                "mission load rejected after mission start",
+            )
+            return
+
+        try:
+            data = json.loads(msg.data)
+            waypoints = self._validate_waypoints(
+                data.get("waypoints", []),
+                min_count=self.min_runtime_waypoints,
+                max_count=self.max_runtime_waypoints,
+            )
+        except Exception as exc:
+            self._publish_load_status(False, f"invalid mission payload: {exc}")
+            return
+
+        self._apply_runtime_mission(data, waypoints)
+
+    def _validate_waypoints(
+        self,
+        raw_waypoints: Any,
+        *,
+        min_count: int,
+        max_count: int,
+    ) -> List[Dict[str, Any]]:
+        if not isinstance(raw_waypoints, list):
+            raise ValueError("waypoints must be a list")
+        if len(raw_waypoints) < min_count:
+            raise ValueError(
+                f"expected at least {min_count} waypoint(s), got "
+                f"{len(raw_waypoints)}"
+            )
+        if len(raw_waypoints) > max_count:
+            raise ValueError(
+                f"expected at most {max_count} waypoint(s), got "
+                f"{len(raw_waypoints)}"
+            )
+
+        waypoints = []
+        for index, raw_wp in enumerate(raw_waypoints):
+            if not isinstance(raw_wp, dict):
+                raise ValueError(f"waypoint {index} must be an object")
+            lat, lon = self._parse_lat_lon(raw_wp, index)
+            wp = dict(raw_wp)
+            wp["lat"] = lat
+            wp["lon"] = lon
+            waypoints.append(wp)
+
+        return waypoints
+
+    def _parse_lat_lon(
+        self,
+        waypoint: Dict[str, Any],
+        index: int,
+    ) -> Tuple[float, float]:
+        if "lat" not in waypoint or "lon" not in waypoint:
+            raise ValueError(f"waypoint {index} missing lat/lon")
+
+        lat = float(waypoint["lat"])
+        lon = float(waypoint["lon"])
+        if not -90.0 <= lat <= 90.0:
+            raise ValueError(f"waypoint {index} latitude out of range")
+        if not -180.0 <= lon <= 180.0:
+            raise ValueError(f"waypoint {index} longitude out of range")
+
+        return lat, lon
+
+    def _apply_runtime_mission(
+        self,
+        data: Dict[str, Any],
+        waypoints: List[Dict[str, Any]],
+    ) -> None:
+        if self.transition_timer:
+            self.transition_timer.cancel()
+            self.transition_timer = None
+
+        self.enable_multi_mission = False
+        self.mission_files = []
+        self.current_mission_index = 0
+        self.active_waypoint_index = 0
+        self.mission_loaded = True
+        self.mission_started = False
+        self.mission_completed = False
+        self.all_missions_completed = False
+        self.waypoints = waypoints
+        self._previous_waypoints_hash = None
+
+        self.waypoints_pub.publish(
+            String(data=to_json({"waypoints": self.waypoints}))
+        )
+        self.waypoints_changed_pub.publish(Bool(data=True))
+        self._previous_waypoints_hash = self._get_waypoints_hash()
+
+        source = str(data.get("source", "runtime"))
+        mission_name = str(data.get("mission_name", "runtime_mission"))
+        self.get_logger().info(
+            f"Runtime mission loaded from {source}: {mission_name} "
+            f"({len(self.waypoints)} waypoint(s))"
+        )
+        self._publish_load_status(
+            True,
+            "mission loaded",
+            {
+                "source": source,
+                "mission_name": mission_name,
+                "waypoint_count": len(self.waypoints),
+            },
+        )
 
     def start_next_mission(self) -> None:
         """Bir sonraki mission'a geçer."""
@@ -262,6 +418,24 @@ class MissionManagerNode(Node):
         waypoints_str = json.dumps(self.waypoints, sort_keys=True)
         return str(hash(waypoints_str))
 
+    def _publish_load_status(
+        self,
+        accepted: bool,
+        reason: str,
+        extra: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        payload = {
+            "accepted": bool(accepted),
+            "reason": reason,
+        }
+        if extra:
+            payload.update(extra)
+        self.load_status_pub.publish(String(data=to_json(payload)))
+        if accepted:
+            self.get_logger().info(f"Mission load accepted: {reason}")
+        else:
+            self.get_logger().warn(f"Mission load rejected: {reason}")
+
     def loop(self) -> None:
         # Waypointleri publish et (değişiklik varsa)
         current_hash = self._get_waypoints_hash()
@@ -291,6 +465,12 @@ class MissionManagerNode(Node):
                         "waypoint_count": len(self.waypoints),
                         "current_mission_index": self.current_mission_index,
                         "total_mission_count": len(self.mission_files),
+                        "runtime_mission_load_enabled": (
+                            self.allow_runtime_mission_load
+                        ),
+                        "runtime_mission_load_required": (
+                            self.require_runtime_mission_load
+                        ),
                     }
                 )
             )

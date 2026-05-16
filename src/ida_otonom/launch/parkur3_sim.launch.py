@@ -14,6 +14,7 @@ def generate_launch_description():
     log_dir = LaunchConfiguration("log_dir")
     enable_visualizer = LaunchConfiguration("enable_visualizer")
     enable_logger = LaunchConfiguration("enable_logger")
+    enable_geofence = LaunchConfiguration("enable_geofence")
     target_color = LaunchConfiguration("target_color")
 
     default_config = PathJoinSubstitution(
@@ -56,6 +57,11 @@ def generate_launch_description():
                 "enable_logger",
                 default_value="true",
                 description="Start CSV telemetry logger.",
+            ),
+            DeclareLaunchArgument(
+                "enable_geofence",
+                default_value="true",
+                description="Monitor GPS course boundary and recover inward.",
             ),
             DeclareLaunchArgument(
                 "target_color",
@@ -135,6 +141,16 @@ def generate_launch_description():
                 executable="gps_guidance_node",
                 name="gps_guidance_node",
                 output="screen",
+                parameters=[config_file, mission_params],
+            ),
+
+            # Parkur boundary monitor
+            Node(
+                package="ida_otonom",
+                executable="geofence_monitor_node",
+                name="geofence_monitor_node",
+                output="screen",
+                condition=IfCondition(enable_geofence),
                 parameters=[config_file, mission_params],
             ),
 

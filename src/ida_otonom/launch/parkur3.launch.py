@@ -14,8 +14,16 @@ def generate_launch_description():
     log_dir = LaunchConfiguration("log_dir")
     enable_yki_bridge = LaunchConfiguration("enable_yki_bridge")
     enable_costmap_logger = LaunchConfiguration("enable_costmap_logger")
+    enable_rc_kill = LaunchConfiguration("enable_rc_kill")
+    enable_power_relay = LaunchConfiguration("enable_power_relay")
+    enable_remote_kill = LaunchConfiguration("enable_remote_kill")
+    enable_power_monitor = LaunchConfiguration("enable_power_monitor")
+    enable_geofence = LaunchConfiguration("enable_geofence")
+    remote_kill_port = LaunchConfiguration("remote_kill_port")
+    power_monitor_port = LaunchConfiguration("power_monitor_port")
     mavros_bridge_enabled = LaunchConfiguration("mavros_bridge_enabled")
     mavros_output_mode = LaunchConfiguration("mavros_output_mode")
+    yki_mavlink_url = LaunchConfiguration("yki_mavlink_url")
     model_path = LaunchConfiguration("model_path")
     enable_yolo = LaunchConfiguration("enable_yolo")
     color_image_topic = LaunchConfiguration("color_image_topic")
@@ -64,14 +72,54 @@ def generate_launch_description():
                 description="Start lidar costmap recorder.",
             ),
             DeclareLaunchArgument(
-                "mavros_bridge_enabled",
+                "enable_rc_kill",
                 default_value="false",
+                description="Read Pixhawk RC channel kill as backup.",
+            ),
+            DeclareLaunchArgument(
+                "enable_power_relay",
+                default_value="false",
+                description="Drive a relay directly from Jetson GPIO.",
+            ),
+            DeclareLaunchArgument(
+                "enable_remote_kill",
+                default_value="false",
+                description="Read LoRa/Arduino kill over serial.",
+            ),
+            DeclareLaunchArgument(
+                "enable_power_monitor",
+                default_value="false",
+                description="Read Arduino battery/contactor status over serial.",
+            ),
+            DeclareLaunchArgument(
+                "enable_geofence",
+                default_value="true",
+                description="Monitor GPS course boundary and recover inward.",
+            ),
+            DeclareLaunchArgument(
+                "remote_kill_port",
+                default_value="/dev/ttyUSB0",
+                description="Serial port for LoRa/Arduino kill bridge.",
+            ),
+            DeclareLaunchArgument(
+                "power_monitor_port",
+                default_value="/dev/ttyUSB1",
+                description="Serial port for Arduino power monitor.",
+            ),
+            DeclareLaunchArgument(
+                "mavros_bridge_enabled",
+                default_value="true",
                 description="Allow bridge to publish MAVROS commands.",
             ),
             DeclareLaunchArgument(
                 "mavros_output_mode",
-                default_value="disabled",
+                default_value="manual_control",
                 description="disabled, cmd_vel, or manual_control.",
+            ),
+            DeclareLaunchArgument(
+                "yki_mavlink_url",
+                default_value="udpout:127.0.0.1:14550",
+                description="MAVLink connection URL for YKI telemetry/commands.",
             ),
             DeclareLaunchArgument(
                 "model_path",
@@ -139,6 +187,7 @@ def generate_launch_description():
                             camera_info_topic,
                             value_type=str,
                         ),
+                        "record_dir": ParameterValue(log_dir, value_type=str),
                     },
                 ],
             ),
@@ -178,6 +227,16 @@ def generate_launch_description():
                 executable="gps_guidance_node",
                 name="gps_guidance_node",
                 output="screen",
+                parameters=[config_file, mission_params],
+            ),
+
+            # Parkur boundary monitor
+            Node(
+                package="ida_otonom",
+                executable="geofence_monitor_node",
+                name="geofence_monitor_node",
+                output="screen",
+                condition=IfCondition(enable_geofence),
                 parameters=[config_file, mission_params],
             ),
 
@@ -224,6 +283,7 @@ def generate_launch_description():
                 executable="rc_kill_node",
                 name="rc_kill_node",
                 output="screen",
+                condition=IfCondition(enable_rc_kill),
                 parameters=[config_file],
             ),
 
@@ -233,7 +293,57 @@ def generate_launch_description():
                 executable="power_relay_node",
                 name="power_relay_node",
                 output="screen",
-                parameters=[config_file],
+                condition=IfCondition(enable_power_relay),
+                parameters=[
+                    config_file,
+                    {
+                        "enabled": ParameterValue(
+                            enable_power_relay,
+                            value_type=bool,
+                        )
+                    },
+                ],
+            ),
+
+            # LoRa/Arduino remote kill bridge
+            Node(
+                package="ida_otonom",
+                executable="remote_kill_node",
+                name="remote_kill_node",
+                output="screen",
+                condition=IfCondition(enable_remote_kill),
+                parameters=[
+                    config_file,
+                    {
+                        "enabled": ParameterValue(
+                            enable_remote_kill,
+                            value_type=bool,
+                        ),
+                        "port": ParameterValue(remote_kill_port, value_type=str),
+                    },
+                ],
+            ),
+
+            # Battery/contactor telemetry from Arduino2
+            Node(
+                package="ida_otonom",
+                executable="power_monitor_node",
+                name="power_monitor_node",
+                output="screen",
+                condition=IfCondition(enable_power_monitor),
+                parameters=[
+                    config_file,
+                    {
+                        "enabled": ParameterValue(
+                            enable_power_monitor,
+                            value_type=bool,
+                        ),
+                        "port": ParameterValue(
+                            power_monitor_port,
+                            value_type=str,
+                        ),
+                    },
+                ],
             ),
 
             # MAVROS Bridge
@@ -273,7 +383,15 @@ def generate_launch_description():
                 name="yki_bridge_node",
                 output="screen",
                 condition=IfCondition(enable_yki_bridge),
-                parameters=[config_file],
+                parameters=[
+                    config_file,
+                    {
+                        "mavlink_connection_url": ParameterValue(
+                            yki_mavlink_url,
+                            value_type=str,
+                        ),
+                    },
+                ],
             ),
         ]
     )

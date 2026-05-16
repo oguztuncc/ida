@@ -24,6 +24,7 @@ def generate_launch_description():
     enable_logger = LaunchConfiguration("enable_logger")
     enable_costmap_logger = LaunchConfiguration("enable_costmap_logger")
     enable_visualizer = LaunchConfiguration("enable_visualizer")
+    enable_geofence = LaunchConfiguration("enable_geofence")
     # Default paths
     default_parkur1_config = PathJoinSubstitution(
         [FindPackageShare("ida_otonom"), "config", "parkur1_sim.yaml"]
@@ -104,6 +105,11 @@ def generate_launch_description():
                 description="Start simulation visualizer.",
             ),
             DeclareLaunchArgument(
+                "enable_geofence",
+                default_value="true",
+                description="Monitor GPS course boundary and recover inward.",
+            ),
+            DeclareLaunchArgument(
                 "enable_corridor_planning",
                 default_value="true",
                 description="Use corridor tracking for Parkur 1.",
@@ -179,6 +185,14 @@ def generate_launch_description():
                         )
                     },
                 ],
+            ),
+            Node(
+                package="ida_otonom",
+                executable="geofence_monitor_node",
+                name="geofence_monitor_node",
+                output="screen",
+                condition=IfCondition(enable_geofence),
+                parameters=[parkur1_config],
             ),
 
             # Controller
