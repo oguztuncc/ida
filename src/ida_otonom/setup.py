@@ -35,7 +35,7 @@ setup(
             glob('ida_otonom/parkurlar/*.json'),
         ),
     ],
-    install_requires=['setuptools'],
+    install_requires=['setuptools', 'pymavlink'],
     zip_safe=True,
     maintainer='team',
     maintainer_email='team@example.com',
@@ -47,6 +47,7 @@ setup(
             'mission_manager_node = ida_otonom.mission_manager_node:main',
             'sim_gps_node = ida_otonom.sim_gps_node:main',
             'gps_guidance_node = ida_otonom.gps_guidance_node:main',
+            'geofence_monitor_node = ida_otonom.geofence_monitor_node:main',
             'controller_node = ida_otonom.controller_node:main',
             'mavros_bridge_node = ida_otonom.mavros_bridge_node:main',
             'lidar_processor_node = ida_otonom.lidar_processor_node:main',
@@ -60,7 +61,9 @@ setup(
             'corridor_tracker_node = ida_otonom.corridor_tracker_node:main',
             'parkur2_planner_node = ida_otonom.parkur2_planner_node:main',
             'rc_kill_node = ida_otonom.rc_kill_node:main',
+            'remote_kill_node = ida_otonom.remote_kill_node:main',
             'power_relay_node = ida_otonom.power_relay_node:main',
+            'power_monitor_node = ida_otonom.power_monitor_node:main',
             'perception_node = ida_otonom.perception_node:main',
             'logger_node = ida_otonom.logger_node:main',
             'yki_bridge_node = ida_otonom.yki_bridge_node:main',
@@ -68,6 +71,14 @@ setup(
             'sim_visualizer_node = ida_otonom.sim_visualizer_node:main',
             'parkur2_sim_node = ida_otonom.parkur2_sim_node:main',
             'parkur_editor_node = ida_otonom.parkur_editor_node:main',
+            'unified_sim_node = ida_otonom.unified_sim_node:main',
+            'color_receiver_node = ida_otonom.color_receiver_node:main',
+            'color_buoy_finder_node = ida_otonom.color_buoy_finder_node:main',
+            'parkur3_planner_node = ida_otonom.parkur3_planner_node:main',
+            (
+                'sensor_cross_validator_node = '
+                'ida_otonom.sensor_cross_validator_node:main'
+            ),
         ],
     },
 )

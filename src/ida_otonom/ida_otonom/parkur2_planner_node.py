@@ -16,6 +16,11 @@ class Parkur2PlannerNode(Node):
         self.declare_parameter("danger_distance_m", 0.70)
         self.declare_parameter("avoid_start_distance_m", 3.20)
         self.declare_parameter("emergency_stop_distance_m", 0.45)
+        self.declare_parameter("contact_recovery_enabled", True)
+        self.declare_parameter("contact_recovery_distance_m", 0.30)
+        self.declare_parameter("recovery_backoff_duration_s", 1.2)
+        self.declare_parameter("recovery_backoff_speed_mps", -0.12)
+        self.declare_parameter("recovery_turn_bearing_deg", 25.0)
         self.declare_parameter("safe_clearance_m", 1.50)
         self.declare_parameter("max_relative_bearing_deg", 35.0)
         self.declare_parameter("max_pass_bearing_deg", 25.0)
@@ -33,14 +38,17 @@ class Parkur2PlannerNode(Node):
         self.declare_parameter("sensor_timeout_s", 1.0)
         self.declare_parameter("waypoint_blend_factor", 0.0)
         self.declare_parameter("expected_corridor_width_m", 8.82)
+        self.declare_parameter("final_approach_distance_m", 12.0)
+        self.declare_parameter("waypoint_bias_weight", 0.15)
 
-        # Legacy parameters may still exist in YAML files; declare them so
-        # launch overrides remain harmless while this node uses the new state
-        # machine below.
         self.declare_parameter("scan_before_bypass", False)
         self.declare_parameter("scan_duration_s", 0.0)
         self.declare_parameter("scan_spin_angle_deg", 0.0)
         self.declare_parameter("scan_cooldown_s", 0.0)
+
+        # Legacy parameters may still exist in YAML files; declare them so
+        # launch overrides remain harmless while this node uses the new state
+        # machine below.
         self.declare_parameter("bypass_hold_s", 0.0)
         self.declare_parameter("bypass_release_distance_m", 0.0)
         self.declare_parameter("bypass_lookahead_m", 0.0)
@@ -61,6 +69,21 @@ class Parkur2PlannerNode(Node):
         )
         self.emergency_stop_distance_m = float(
             self.get_parameter("emergency_stop_distance_m").value
+        )
+        self.contact_recovery_enabled = bool(
+            self.get_parameter("contact_recovery_enabled").value
+        )
+        self.contact_recovery_distance_m = float(
+            self.get_parameter("contact_recovery_distance_m").value
+        )
+        self.recovery_backoff_duration_s = float(
+            self.get_parameter("recovery_backoff_duration_s").value
+        )
+        self.recovery_backoff_speed_mps = -abs(
+            float(self.get_parameter("recovery_backoff_speed_mps").value)
+        )
+        self.recovery_turn_bearing_deg = float(
+            self.get_parameter("recovery_turn_bearing_deg").value
         )
         self.safe_clearance_m = float(
             self.get_parameter("safe_clearance_m").value
@@ -118,9 +141,38 @@ class Parkur2PlannerNode(Node):
         self.expected_corridor_width_m = float(
             self.get_parameter("expected_corridor_width_m").value
         )
+        self.final_approach_distance_m = float(
+            self.get_parameter("final_approach_distance_m").value
+        )
+        self.waypoint_bias_weight = clamp(
+            float(self.get_parameter("waypoint_bias_weight").value),
+            0.0,
+            1.0,
+        )
+        self.scan_before_bypass = bool(
+            self.get_parameter("scan_before_bypass").value
+        )
+        self.scan_duration_s = max(
+            0.0,
+            float(self.get_parameter("scan_duration_s").value),
+        )
+        self.scan_spin_angle_deg = abs(
+            float(self.get_parameter("scan_spin_angle_deg").value)
+        )
+        self.scan_cooldown_s = max(
+            0.0,
+            float(self.get_parameter("scan_cooldown_s").value),
+        )
+        self.require_corridor_for_motion = bool(
+            self.get_parameter("require_corridor_for_motion").value
+        )
+        self.corridor_search_angle_deg = float(
+            self.get_parameter("corridor_search_angle_deg").value
+        )
 
         self.heading_deg = None
         self.target_bearing_deg = None
+        self.target_distance_m = None
         self.lidar_summary = None
         self.corridor = None
         self.semantic = None
@@ -136,6 +188,13 @@ class Parkur2PlannerNode(Node):
         self.pass_last_obstacle_ts = 0.0
         self.active_obstacle_id = None
         self.target_left_m = 0.0
+        self.recovery_until_ts = 0.0
+        self.recovery_relative_bearing = 0.0
+        self.scan_started_ts = 0.0
+        self.last_scan_ts = -999.0
+        self.scan_obstacle_id = None
+        self.scan_left_score = 0.0
+        self.scan_right_score = 0.0
         self.last_relative_bearing = None
         self.last_plan_ts = 0.0
 
@@ -168,6 +227,12 @@ class Parkur2PlannerNode(Node):
             10,
         )
         self.create_subscription(
+            Float32,
+            "/guidance/target_distance_m",
+            self.target_distance_cb,
+            10,
+        )
+        self.create_subscription(
             String,
             "/perception/lidar_summary",
             self.lidar_cb,
@@ -194,6 +259,9 @@ class Parkur2PlannerNode(Node):
     def target_cb(self, msg: Float32) -> None:
         self.target_bearing_deg = float(msg.data)
 
+    def target_distance_cb(self, msg: Float32) -> None:
+        self.target_distance_m = max(0.0, float(msg.data))
+
     def lidar_cb(self, msg: String) -> None:
         try:
             self.lidar_summary = from_json(msg.data)
@@ -217,6 +285,15 @@ class Parkur2PlannerNode(Node):
 
     def _target_relative_bearing(self) -> float:
         return normalize_angle_deg(self.target_bearing_deg - self.heading_deg)
+
+    def _blend_relative_bearing(
+        self,
+        primary: float,
+        secondary: float,
+        weight: float,
+    ) -> float:
+        delta = normalize_angle_deg(secondary - primary)
+        return normalize_angle_deg(primary + delta * clamp(weight, 0.0, 1.0))
 
     def _absolute_from_relative(self, relative_deg: float) -> float:
         return (self.heading_deg + relative_deg) % 360.0
@@ -365,6 +442,96 @@ class Parkur2PlannerNode(Node):
         # the obstacle.
         return -1.0 if obstacle_left > 0.0 else 1.0
 
+    def _scan_available(self, timestamp: float) -> bool:
+        if not self.scan_before_bypass or self.scan_duration_s <= 0.0:
+            return False
+        return timestamp - self.last_scan_ts >= self.scan_cooldown_s
+
+    def _start_scan_before_pass(
+        self,
+        obstacle,
+        corridor,
+        best_free: float,
+        timestamp: float,
+    ) -> None:
+        self.mode = "SCAN_BEFORE_PASS"
+        self.scan_started_ts = timestamp
+        self.scan_obstacle_id = None if obstacle is None else obstacle.get("id")
+        self.scan_left_score = 0.0
+        self.scan_right_score = 0.0
+        self.pass_side = self._choose_pass_side(obstacle, corridor, best_free)
+        self._update_scan_scores(obstacle, corridor, best_free)
+
+    def _update_scan_scores(self, obstacle, corridor, best_free: float) -> None:
+        left_score = 0.0
+        right_score = 0.0
+        if abs(best_free) > 1.0:
+            if best_free > 0.0:
+                left_score += abs(best_free)
+            else:
+                right_score += abs(best_free)
+
+        if obstacle is not None:
+            bounds = self._corridor_bounds(corridor)
+            obstacle_left = float(obstacle["left_m"])
+            margin = max(self.obstacle_pass_margin_m, self.safe_clearance_m / 2.0)
+            if bounds is not None:
+                min_left, max_left = bounds
+                left_gap = max_left - (obstacle_left + margin)
+                right_gap = (obstacle_left - margin) - min_left
+                left_score += max(0.0, left_gap) * 20.0
+                right_score += max(0.0, right_gap) * 20.0
+            else:
+                if obstacle_left <= 0.0:
+                    left_score += 10.0
+                else:
+                    right_score += 10.0
+
+        self.scan_left_score = max(self.scan_left_score, left_score)
+        self.scan_right_score = max(self.scan_right_score, right_score)
+
+    def _finish_scan_before_pass(
+        self,
+        obstacle,
+        corridor,
+        best_free: float,
+        timestamp: float,
+    ) -> bool:
+        self.last_scan_ts = timestamp
+        if obstacle is None:
+            self.mode = "RETURN_TO_CENTER" if corridor is not None else "CRUISE"
+            return False
+
+        if self.scan_left_score > self.scan_right_score + 0.5:
+            self.pass_side = 1.0
+        elif self.scan_right_score > self.scan_left_score + 0.5:
+            self.pass_side = -1.0
+        else:
+            self.pass_side = self._choose_pass_side(obstacle, corridor, best_free)
+
+        self.mode = "PASS_COMMITTED"
+        self.pass_started_ts = timestamp
+        self.pass_last_obstacle_ts = timestamp
+        self.active_obstacle_id = obstacle["id"]
+        self.target_left_m = self._target_left_for_pass(obstacle, corridor)
+        return True
+
+    def _scan_relative_bearing(self, timestamp: float) -> float:
+        elapsed = max(0.0, timestamp - self.scan_started_ts)
+        phase = elapsed / max(self.scan_duration_s, 0.1)
+        body_scan = (
+            self.scan_spin_angle_deg
+            if phase < 0.5
+            else -self.scan_spin_angle_deg
+        )
+        return self._nav_relative_from_body_left(
+            clamp(
+                body_scan,
+                -self.max_relative_bearing_deg,
+                self.max_relative_bearing_deg,
+            )
+        )
+
     def _target_left_for_pass(self, obstacle, corridor) -> float:
         obstacle_left = float(obstacle["left_m"])
         side = 1.0 if self.pass_side >= 0.0 else -1.0
@@ -460,7 +627,7 @@ class Parkur2PlannerNode(Node):
 
         safe_bearing = self._absolute_from_relative(relative_bearing)
         self.safe_bearing_pub.publish(Float32(data=float(safe_bearing)))
-        self.speed_limit_pub.publish(Float32(data=float(max(0.0, speed_limit))))
+        self.speed_limit_pub.publish(Float32(data=float(speed_limit)))
         self.status_pub.publish(
             String(
                 data=to_json(
@@ -471,6 +638,7 @@ class Parkur2PlannerNode(Node):
                         "relative_bearing_deg": relative_bearing,
                         "speed_limit_mps": speed_limit,
                         "front_clearance_m": front_clearance,
+                        "target_distance_m": self.target_distance_m,
                         "lidar_state": lidar_state,
                         "corridor_confidence": None
                         if corridor is None
@@ -493,6 +661,18 @@ class Parkur2PlannerNode(Node):
                         else obstacle["left_m"],
                         "pass_side": self.pass_side,
                         "target_left_m": self.target_left_m,
+                        "scan_elapsed_s": max(0.0, timestamp - self.scan_started_ts)
+                        if mode == "SCAN_BEFORE_PASS"
+                        else None,
+                        "scan_left_score": self.scan_left_score
+                        if mode == "SCAN_BEFORE_PASS"
+                        else None,
+                        "scan_right_score": self.scan_right_score
+                        if mode == "SCAN_BEFORE_PASS"
+                        else None,
+                        "scan_obstacle_id": self.scan_obstacle_id
+                        if mode == "SCAN_BEFORE_PASS"
+                        else None,
                         "reason": reason,
                     }
                 )
@@ -506,6 +686,33 @@ class Parkur2PlannerNode(Node):
         self.active_obstacle_id = None
         self.target_left_m = 0.0
 
+    def _reset_scan(self) -> None:
+        self.scan_started_ts = 0.0
+        self.scan_obstacle_id = None
+        self.scan_left_score = 0.0
+        self.scan_right_score = 0.0
+
+    def _start_recovery_backoff(self, best_free: float, timestamp: float) -> None:
+        self.mode = "RECOVERY_BACKOFF"
+        self.recovery_until_ts = timestamp + max(
+            self.recovery_backoff_duration_s,
+            0.1,
+        )
+        body_turn = best_free
+        if abs(body_turn) < 1.0:
+            if self.pass_side != 0.0:
+                body_turn = self.pass_side * self.recovery_turn_bearing_deg
+            else:
+                body_turn = self.recovery_turn_bearing_deg
+        body_turn = clamp(
+            body_turn,
+            -abs(self.recovery_turn_bearing_deg),
+            abs(self.recovery_turn_bearing_deg),
+        )
+        self.recovery_relative_bearing = self._nav_relative_from_body_left(
+            body_turn
+        )
+
     def loop(self) -> None:
         if self.heading_deg is None or self.target_bearing_deg is None:
             return
@@ -515,6 +722,25 @@ class Parkur2PlannerNode(Node):
         obstacle = self._nearest_obstacle()
         timestamp = now_ts()
         target_relative = self._target_relative_bearing()
+
+        if self.mode == "RECOVERY_BACKOFF":
+            if (
+                timestamp < self.recovery_until_ts
+                or lidar_state == "emergency"
+            ):
+                self._publish_plan(
+                    self.mode,
+                    self.recovery_relative_bearing,
+                    self.recovery_backoff_speed_mps,
+                    front_clearance,
+                    lidar_state,
+                    corridor,
+                    obstacle,
+                    "contact_recovery_backoff",
+                )
+                return
+            self.mode = "RETURN_TO_CENTER" if corridor is not None else "CRUISE"
+            self.recovery_until_ts = 0.0
 
         if lidar_state in ("missing", "timeout"):
             self.mode = "EMERGENCY_STOP"
@@ -531,6 +757,24 @@ class Parkur2PlannerNode(Node):
             return
 
         if lidar_state == "emergency":
+            if (
+                self.contact_recovery_enabled
+                and front_clearance is not None
+                and front_clearance <= self.contact_recovery_distance_m
+            ):
+                self._start_recovery_backoff(best_free, timestamp)
+                self._publish_plan(
+                    self.mode,
+                    self.recovery_relative_bearing,
+                    self.recovery_backoff_speed_mps,
+                    front_clearance,
+                    lidar_state,
+                    corridor,
+                    obstacle,
+                    "front_contact_recovery",
+                )
+                return
+
             self.mode = "EMERGENCY_STOP"
             self._publish_plan(
                 self.mode,
@@ -542,6 +786,65 @@ class Parkur2PlannerNode(Node):
                 obstacle,
                 "front_emergency_stop",
             )
+            return
+
+        if self.mode == "SCAN_BEFORE_PASS":
+            self._update_scan_scores(obstacle, corridor, best_free)
+            elapsed = timestamp - self.scan_started_ts
+            if elapsed < self.scan_duration_s:
+                self._publish_plan(
+                    self.mode,
+                    self._scan_relative_bearing(timestamp),
+                    min(self.approach_speed_mps * 0.5, self.max_speed_mps),
+                    front_clearance,
+                    lidar_state,
+                    corridor,
+                    obstacle,
+                    "scan_before_pass",
+                )
+                return
+
+            if self._finish_scan_before_pass(
+                obstacle,
+                corridor,
+                best_free,
+                timestamp,
+            ):
+                body_bearing = self._body_bearing_for_left(
+                    self.target_left_m,
+                    self.pass_lookahead_m,
+                )
+                relative = self._nav_relative_from_body_left(
+                    clamp(
+                        body_bearing,
+                        -self.max_pass_bearing_deg,
+                        self.max_pass_bearing_deg,
+                    )
+                )
+                self._publish_plan(
+                    self.mode,
+                    relative,
+                    min(self.approach_speed_mps, self.max_speed_mps),
+                    front_clearance,
+                    lidar_state,
+                    corridor,
+                    obstacle,
+                    "scan_selected_pass_side",
+                )
+                self._reset_scan()
+                return
+
+            self._publish_plan(
+                self.mode,
+                target_relative,
+                0.0,
+                front_clearance,
+                lidar_state,
+                corridor,
+                obstacle,
+                "scan_aborted_no_obstacle",
+            )
+            self._reset_scan()
             return
 
         if self.mode == "PASS_COMMITTED":
@@ -605,7 +908,26 @@ class Parkur2PlannerNode(Node):
 
         if self.mode == "RETURN_TO_CENTER":
             if self._obstacle_requires_pass(obstacle, corridor):
+                if self._scan_available(timestamp):
+                    self._start_scan_before_pass(
+                        obstacle,
+                        corridor,
+                        best_free,
+                        timestamp,
+                    )
+                    self._publish_plan(
+                        self.mode,
+                        self._scan_relative_bearing(timestamp),
+                        min(self.approach_speed_mps * 0.5, self.max_speed_mps),
+                        front_clearance,
+                        lidar_state,
+                        corridor,
+                        obstacle,
+                        "scan_before_pass_return",
+                    )
+                    return
                 self.mode = "PASS_COMMITTED"
+                self.pass_side = self._choose_pass_side(obstacle, corridor, best_free)
                 self.pass_started_ts = timestamp
                 self.pass_last_obstacle_ts = timestamp
                 self.active_obstacle_id = obstacle["id"]
@@ -670,6 +992,24 @@ class Parkur2PlannerNode(Node):
                 self._reset_pass()
 
         if self._obstacle_requires_pass(obstacle, corridor):
+            if self._scan_available(timestamp):
+                self._start_scan_before_pass(
+                    obstacle,
+                    corridor,
+                    best_free,
+                    timestamp,
+                )
+                self._publish_plan(
+                    self.mode,
+                    self._scan_relative_bearing(timestamp),
+                    min(self.approach_speed_mps * 0.5, self.max_speed_mps),
+                    front_clearance,
+                    lidar_state,
+                    corridor,
+                    obstacle,
+                    "scan_before_pass",
+                )
+                return
             self.mode = "PASS_COMMITTED"
             self.pass_side = self._choose_pass_side(obstacle, corridor, best_free)
             self.pass_started_ts = timestamp
@@ -699,6 +1039,25 @@ class Parkur2PlannerNode(Node):
             )
             return
 
+        if corridor is None and self.require_corridor_for_motion:
+            self.mode = "CORRIDOR_SEARCH"
+            relative = clamp(
+                self.corridor_search_angle_deg,
+                -self.max_relative_bearing_deg,
+                self.max_relative_bearing_deg,
+            )
+            self._publish_plan(
+                self.mode,
+                relative,
+                0.0,
+                front_clearance,
+                lidar_state,
+                corridor,
+                obstacle,
+                "waiting_for_validated_corridor",
+            )
+            return
+
         self.mode = "CRUISE"
         self._reset_pass()
         if corridor is not None:
@@ -717,6 +1076,27 @@ class Parkur2PlannerNode(Node):
             )
             reason = corridor["reason"]
             speed = self.max_speed_mps
+            if (
+                self.target_distance_m is not None
+                and self.target_distance_m <= self.final_approach_distance_m
+            ):
+                relative = target_relative
+                reason = "final_waypoint_approach"
+                speed = min(
+                    speed,
+                    max(
+                        self.approach_speed_mps,
+                        self.max_speed_mps
+                        * self.target_distance_m
+                        / max(self.final_approach_distance_m, 0.1),
+                    ),
+                )
+            else:
+                relative = self._blend_relative_bearing(
+                    corridor_relative,
+                    target_relative,
+                    self.waypoint_bias_weight,
+                )
         else:
             relative = target_relative
             reason = "waypoint_no_corridor"

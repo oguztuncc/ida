@@ -1,5 +1,6 @@
 import math
 import os
+from datetime import datetime
 from typing import List, Optional, Tuple
 
 import cv2
@@ -33,6 +34,10 @@ class BuoyDetectorNode(Node):
         self.declare_parameter("assumed_horizontal_fov_deg", 87.0)
         self.declare_parameter("publish_empty_detections", True)
         self.declare_parameter("enable_yolo", True)
+        self.declare_parameter("enable_video_recording", False)
+        self.declare_parameter("record_dir", "")
+        self.declare_parameter("record_fps", 10.0)
+        self.declare_parameter("detection_topic", "/perception/buoy_detections")
         self.declare_parameter("color_image_topic", "/camera/camera/color/image_raw")
         self.declare_parameter(
             "depth_image_topic",
@@ -60,16 +65,23 @@ class BuoyDetectorNode(Node):
             self.get_parameter("publish_empty_detections").value
         )
         self.enable_yolo = bool(self.get_parameter("enable_yolo").value)
+        self.enable_video_recording = bool(
+            self.get_parameter("enable_video_recording").value
+        )
+        self.record_dir = str(self.get_parameter("record_dir").value)
+        self.record_fps = float(self.get_parameter("record_fps").value)
 
         self.bridge = CvBridge() if CvBridge is not None else None
         self.model = self._load_model()
         self.latest_depth = None
         self.fx = None
         self.cx = None
+        self.video_writer = None
+        self.video_path = ""
 
         self.pub = self.create_publisher(
             String,
-            "/perception/buoy_detections",
+            str(self.get_parameter("detection_topic").value),
             10,
         )
         self.create_subscription(
@@ -232,6 +244,107 @@ class BuoyDetectorNode(Node):
                 )
         return detections
 
+    def _ensure_video_writer(self, frame_bgr) -> None:
+        if not self.enable_video_recording or self.video_writer is not None:
+            return
+
+        h, w = frame_bgr.shape[:2]
+        record_dir = self.record_dir or os.path.join(
+            os.path.expanduser("~"),
+            ".ros",
+            "ida_otonom",
+            "records",
+        )
+        os.makedirs(record_dir, exist_ok=True)
+        stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        self.video_path = os.path.join(
+            record_dir,
+            f"camera_yolo_processed_{stamp}.mp4",
+        )
+        self.video_writer = cv2.VideoWriter(
+            self.video_path,
+            cv2.VideoWriter_fourcc(*"mp4v"),
+            max(self.record_fps, 1.0),
+            (w, h),
+        )
+        if not self.video_writer.isOpened():
+            self.get_logger().error(
+                f"Could not open annotated video writer: {self.video_path}"
+            )
+            self.video_writer = None
+            self.enable_video_recording = False
+            return
+        self.get_logger().info(f"Recording annotated camera MP4: {self.video_path}")
+
+    def _draw_label(self, frame_bgr, text: str, x: int, y: int) -> None:
+        font = cv2.FONT_HERSHEY_SIMPLEX
+        scale = 0.55
+        thickness = 2
+        (tw, th), baseline = cv2.getTextSize(text, font, scale, thickness)
+        y0 = max(0, y - th - baseline - 6)
+        cv2.rectangle(frame_bgr, (x, y0), (x + tw + 8, y), (0, 160, 0), -1)
+        cv2.putText(
+            frame_bgr,
+            text,
+            (x + 4, y - baseline - 3),
+            font,
+            scale,
+            (255, 255, 255),
+            thickness,
+            cv2.LINE_AA,
+        )
+
+    def _annotate_frame(self, frame_bgr, detections: List[dict], timestamp: float):
+        annotated = frame_bgr.copy()
+        stamp_text = datetime.fromtimestamp(timestamp).strftime(
+            "%Y-%m-%d %H:%M:%S.%f"
+        )[:-3]
+        cv2.putText(
+            annotated,
+            stamp_text,
+            (10, 28),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.7,
+            (255, 255, 255),
+            2,
+            cv2.LINE_AA,
+        )
+
+        h, w = annotated.shape[:2]
+        for det in detections:
+            x1, y1, x2, y2 = det.get("bbox_xyxy", [0, 0, 0, 0])
+            x1 = max(0, min(w - 1, int(round(x1))))
+            y1 = max(0, min(h - 1, int(round(y1))))
+            x2 = max(0, min(w - 1, int(round(x2))))
+            y2 = max(0, min(h - 1, int(round(y2))))
+            if x2 <= x1 or y2 <= y1:
+                continue
+
+            cv2.rectangle(annotated, (x1, y1), (x2, y2), (0, 255, 0), 2)
+            range_m = det.get("range_m")
+            range_text = "" if range_m is None else f" {float(range_m):.1f}m"
+            label = (
+                f"{det.get('class_name', 'obj')} "
+                f"{float(det.get('confidence', 0.0)):.2f}{range_text}"
+            )
+            self._draw_label(annotated, label, x1, max(y1, 22))
+        return annotated
+
+    def _write_annotated_video(
+        self,
+        frame_bgr,
+        detections: List[dict],
+        timestamp: float,
+    ) -> None:
+        if not self.enable_video_recording:
+            return
+        self._ensure_video_writer(frame_bgr)
+        if self.video_writer is None:
+            return
+        self.video_writer.write(
+            self._annotate_frame(frame_bgr, detections, timestamp)
+        )
+
     def color_cb(self, msg: Image) -> None:
         if self.bridge is None:
             if self.publish_empty_detections:
@@ -243,24 +356,45 @@ class BuoyDetectorNode(Node):
             self.get_logger().warn(f"Color conversion failed: {exc}")
             return
 
+        timestamp = now_ts()
         detections = self._run_yolo(frame)
+        self._write_annotated_video(frame, detections, timestamp)
         if detections or self.publish_empty_detections:
-            self._publish(detections, frame_id=msg.header.frame_id)
+            self._publish(
+                detections,
+                frame_id=msg.header.frame_id,
+                timestamp=timestamp,
+            )
 
-    def _publish(self, detections: List[dict], frame_id: str = "") -> None:
+    def _publish(
+        self,
+        detections: List[dict],
+        frame_id: str = "",
+        timestamp: Optional[float] = None,
+    ) -> None:
         payload = {
-            "timestamp": now_ts(),
+            "timestamp": timestamp if timestamp is not None else now_ts(),
             "frame_id": frame_id or self.camera_frame_id,
             "model_path": self.model_path,
             "model_loaded": self.model is not None,
+            "annotated_video_path": self.video_path,
             "detections": detections,
         }
         self.pub.publish(String(data=to_json(payload)))
+
+    def destroy_node(self):
+        try:
+            if self.video_writer is not None:
+                self.video_writer.release()
+        finally:
+            super().destroy_node()
 
 
 def main(args=None) -> None:
     rclpy.init(args=args)
     node = BuoyDetectorNode()
-    rclpy.spin(node)
-    node.destroy_node()
-    rclpy.shutdown()
+    try:
+        rclpy.spin(node)
+    finally:
+        node.destroy_node()
+        rclpy.shutdown()

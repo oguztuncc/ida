@@ -13,15 +13,31 @@ class SafetyNode(Node):
         self.declare_parameter("input_topic", "/control/cmd_vel")
         self.declare_parameter("output_topic", "/control/cmd_vel_safe")
         self.declare_parameter("latch_kill", True)
+        self.declare_parameter("command_timeout_s", 0.5)
+        self.declare_parameter("block_reset_on_physical_kill", True)
 
         self.latch_kill = bool(self.get_parameter("latch_kill").value)
+        self.command_timeout_s = float(
+            self.get_parameter("command_timeout_s").value
+        )
+        self.block_reset_on_physical_kill = bool(
+            self.get_parameter("block_reset_on_physical_kill").value
+        )
         self.kill_active = False
+        self.physical_kill_active = False
         self.last_cmd = Twist()
+        self.last_cmd_ts = 0.0
 
         input_topic = str(self.get_parameter("input_topic").value)
         output_topic = str(self.get_parameter("output_topic").value)
 
         self.create_subscription(Bool, "/safety/kill", self.kill_cb, 10)
+        self.create_subscription(
+            Bool,
+            "/safety/physical_kill",
+            self.physical_kill_cb,
+            10,
+        )
         self.create_subscription(
             Bool,
             "/safety/kill_reset",
@@ -41,15 +57,31 @@ class SafetyNode(Node):
         elif not self.latch_kill:
             self.kill_active = False
 
+    def physical_kill_cb(self, msg: Bool) -> None:
+        self.physical_kill_active = bool(msg.data)
+        if self.physical_kill_active:
+            self.kill_active = True
+
     def kill_reset_cb(self, msg: Bool) -> None:
         if msg.data:
+            if self.block_reset_on_physical_kill and self.physical_kill_active:
+                self.get_logger().warn(
+                    "Kill reset ignored while physical/remote kill is active"
+                )
+                return
             self.kill_active = False
 
     def cmd_cb(self, msg: Twist) -> None:
         self.last_cmd = msg
+        self.last_cmd_ts = self.get_clock().now().nanoseconds / 1e9
 
     def loop(self) -> None:
-        if self.kill_active:
+        now = self.get_clock().now().nanoseconds / 1e9
+        command_timed_out = (
+            self.last_cmd_ts <= 0.0
+            or now - self.last_cmd_ts > self.command_timeout_s
+        )
+        if self.kill_active or command_timed_out:
             out = Twist()
             out.linear.x = 0.0
             out.angular.z = 0.0
@@ -62,7 +94,12 @@ class SafetyNode(Node):
                 data=to_json(
                     {
                         "kill_active": self.kill_active,
+                        "physical_kill_active": self.physical_kill_active,
                         "latch_kill": self.latch_kill,
+                        "block_reset_on_physical_kill": (
+                            self.block_reset_on_physical_kill
+                        ),
+                        "command_timed_out": command_timed_out,
                     }
                 )
             )

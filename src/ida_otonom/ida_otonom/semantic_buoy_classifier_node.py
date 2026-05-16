@@ -20,6 +20,11 @@ class SemanticBuoyClassifierNode(Node):
         self.declare_parameter("course_hue_tolerance_deg", 35.0)
         self.declare_parameter("strong_color_diff_deg", 55.0)
         self.declare_parameter("min_confidence", 0.35)
+        self.declare_parameter("require_sensor_validation", False)
+        self.declare_parameter(
+            "accepted_validation_statuses",
+            ["validated", "lidar_only"],
+        )
 
         self.course_class_names = set(
             str(v) for v in self.get_parameter("course_class_names").value
@@ -37,6 +42,12 @@ class SemanticBuoyClassifierNode(Node):
             self.get_parameter("strong_color_diff_deg").value
         )
         self.min_confidence = float(self.get_parameter("min_confidence").value)
+        self.require_sensor_validation = bool(
+            self.get_parameter("require_sensor_validation").value
+        )
+        self.accepted_validation_statuses = set(
+            str(v) for v in self.get_parameter("accepted_validation_statuses").value
+        )
 
         self.course_profile = None
         self.pub = self.create_publisher(
@@ -93,6 +104,19 @@ class SemanticBuoyClassifierNode(Node):
         class_name = str(detection.get("class_name", ""))
         confidence = float(detection.get("confidence", 0.0))
         hue_diff = self._color_similarity(detection)
+
+        sensor_validation = detection.get("sensor_validation") or {}
+        validation_status = str(sensor_validation.get("status", ""))
+        if (
+            self.require_sensor_validation
+            and validation_status not in self.accepted_validation_statuses
+        ):
+            result = dict(detection)
+            result.update(self._position_fields(detection))
+            result["semantic"] = "invalid_sensor_fusion"
+            result["classification_reason"] = "sensor_validation_failed"
+            result["course_hue_diff_deg"] = hue_diff
+            return result
 
         semantic = "unknown"
         reason = "low_confidence" if confidence < self.min_confidence else ""

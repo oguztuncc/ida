@@ -1,5 +1,5 @@
 import json
-from typing import List, Dict, Optional
+from typing import Dict, Optional
 
 import rclpy
 from rclpy.node import Node

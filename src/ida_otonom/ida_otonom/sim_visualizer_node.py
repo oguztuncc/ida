@@ -518,6 +518,15 @@ class SimVisualizerNode(Node):
                     anchor="s",
                     font=("Sans", 9, "bold"),
                 )
+            elif kind == "finish_waypoint":
+                self.canvas.create_text(
+                    x,
+                    y - radius_px - 10,
+                    text="FINISH WP",
+                    fill="#48d17a",
+                    anchor="s",
+                    font=("Sans", 9, "bold"),
+                )
 
     def _draw_route(self, to_screen) -> None:
         if len(self.waypoints) >= 2:
@@ -644,6 +653,9 @@ class SimVisualizerNode(Node):
         stop_reason = self.setpoints.get("stop_reason")
         planner_mode = self.planner_status.get("mode", "--")
         planner_reason = self.planner_status.get("reason", "--")
+        target_color = self.planner_status.get("target_color", "--")
+        target_range = self.planner_status.get("target_range_m")
+        target_buoy_bearing = self.planner_status.get("target_bearing_deg")
         lidar_state = self.planner_status.get("lidar_state", "--")
         front_clearance = self.planner_status.get(
             "front_clearance_m",
@@ -671,6 +683,10 @@ class SimVisualizerNode(Node):
             f"{self._fmt(target_bearing)} deg",
             f"Command: speed={speed:.2f} m/s yaw={yaw_rate:.2f} rad/s",
             f"Planner: {planner_mode} ({planner_reason})",
+            "Parkur3 target: "
+            f"color={target_color or '--'} "
+            f"range={self._fmt(target_range)} m "
+            f"bearing={self._fmt(target_buoy_bearing)} deg",
         ]
         if stop_reason:
             right_lines.append(f"Stop reason: {stop_reason}")

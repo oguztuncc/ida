@@ -1,0 +1,7 @@
+{
+  "mission_name": "unified_parkur2",
+  "waypoints": [
+    { "lat": 40.1190971, "lon": 26.4092864 },
+    { "lat": 40.1195283, "lon": 26.4099325 }
+  ]
+}

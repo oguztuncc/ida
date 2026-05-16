@@ -15,6 +15,7 @@ parkur2_sim_node:
     scan_ray_count: 361
     detection_range_max_m: 14.0
     detection_fov_deg: 180.0
+    detection_topic: /perception/buoy_detections_raw
     course_width_m: 8.82
 
 mission_manager_node:
@@ -25,6 +26,15 @@ gps_guidance_node:
   ros__parameters:
     arrival_radius_m: 2.0
 
+geofence_monitor_node:
+  ros__parameters:
+    enabled: true
+    generated_half_width_m: 7.0
+    outside_grace_s: 0.5
+    outside_penalty_s: 40.0
+    return_speed_mps: 0.14
+    publish_rate_hz: 4.0
+
 controller_node:
   ros__parameters:
     kp_heading: 0.017
@@ -32,6 +42,8 @@ controller_node:
     max_angular_speed: 0.42
     use_planner_bearing: true
     planner_timeout_s: 0.8
+    allow_reverse_planner_speed: true
+    geofence_timeout_s: 0.8
 
 safety_node:
   ros__parameters:
@@ -77,6 +89,7 @@ course_memory_node:
 
 semantic_buoy_classifier_node:
   ros__parameters:
+    require_sensor_validation: true
     course_class_names:
       - course_buoy
       - buoy
@@ -90,6 +103,15 @@ semantic_buoy_classifier_node:
     course_hue_tolerance_deg: 35.0
     strong_color_diff_deg: 55.0
     min_confidence: 0.35
+
+sensor_cross_validator_node:
+  ros__parameters:
+    input_topic: /perception/buoy_detections_raw
+    output_topic: /perception/buoy_detections
+    bearing_window_deg: 6.0
+    range_tolerance_m: 0.85
+    relative_range_tolerance: 0.30
+    allow_lidar_only: true
 
 corridor_tracker_node:
   ros__parameters:
@@ -114,6 +136,11 @@ parkur2_planner_node:
     approach_speed_mps: 0.15
     danger_distance_m: 1.20
     emergency_stop_distance_m: 0.55
+    contact_recovery_enabled: true
+    contact_recovery_distance_m: 0.30
+    recovery_backoff_duration_s: 1.2
+    recovery_backoff_speed_mps: -0.12
+    recovery_turn_bearing_deg: 25.0
     safe_clearance_m: 1.0
     max_relative_bearing_deg: 35.0
     max_pass_bearing_deg: 32.0
@@ -132,6 +159,12 @@ parkur2_planner_node:
     waypoint_blend_factor: 0.0
     avoid_start_distance_m: 5.0
     expected_corridor_width_m: 8.82
+    scan_before_bypass: true
+    scan_duration_s: 1.0
+    scan_spin_angle_deg: 35.0
+    scan_cooldown_s: 1.5
+    final_approach_distance_m: 14.0
+    waypoint_bias_weight: 0.0
 
 sim_visualizer_node:
   ros__parameters:

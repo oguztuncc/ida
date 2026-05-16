@@ -75,6 +75,12 @@ class GpsGuidanceNode(Node):
             10,
         )
         self.create_subscription(Bool, "/mission/started", self.started_cb, 10)
+        self.create_subscription(
+            Bool,
+            "/mission/waypoints_changed",
+            self.waypoints_changed_cb,
+            10,
+        )
 
         self.timer = self.create_timer(0.1, self.loop)
 
@@ -107,19 +113,35 @@ class GpsGuidanceNode(Node):
     def waypoints_cb(self, msg: String) -> None:
         try:
             data = json.loads(msg.data)
-            self.waypoints = data.get("waypoints", self.waypoints)
+            new_waypoints = data.get("waypoints", [])
+            if new_waypoints:
+                self.waypoints = new_waypoints
+                self.active_waypoint_index = 0  # Waypoint index'ini sıfırla
+                self.get_logger().info(
+                    f"Updated waypoints from mission_manager: {len(self.waypoints)} waypoint(s)"
+                )
         except Exception as exc:
             self.get_logger().warn(f"Ignoring invalid waypoint message: {exc}")
 
     def started_cb(self, msg: Bool) -> None:
         self.mission_started = bool(msg.data)
 
+    def waypoints_changed_cb(self, msg: Bool) -> None:
+        if msg.data:
+            # Waypointler değişti, güncellemeyi bekle
+            self.get_logger().debug("Waypoints changed signal received")
+
     def loop(self) -> None:
         if self.current_lat is None or self.current_lon is None:
             return
         if not self.waypoints:
+            self.get_logger().warn("No waypoints available")
             return
         if self.active_waypoint_index >= len(self.waypoints):
+            self.get_logger().warn(
+                f"Waypoint index {self.active_waypoint_index} out of range "
+                f"({len(self.waypoints)} waypoints)"
+            )
             return
 
         target = self.waypoints[self.active_waypoint_index]

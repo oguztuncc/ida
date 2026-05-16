@@ -10,10 +10,14 @@ from launch_ros.substitutions import FindPackageShare
 def generate_launch_description():
     config_file = LaunchConfiguration("config_file")
     mission_file = LaunchConfiguration("mission_file")
+    mission_files = LaunchConfiguration("mission_files")
+    enable_multi_mission = LaunchConfiguration("enable_multi_mission")
+    transition_delay_s = LaunchConfiguration("transition_delay_s")
     log_dir = LaunchConfiguration("log_dir")
     enable_logger = LaunchConfiguration("enable_logger")
     enable_costmap_logger = LaunchConfiguration("enable_costmap_logger")
     enable_visualizer = LaunchConfiguration("enable_visualizer")
+    enable_geofence = LaunchConfiguration("enable_geofence")
 
     default_config = PathJoinSubstitution(
         [FindPackageShare("ida_otonom"), "config", "parkur2_sim.yaml"]
@@ -40,6 +44,21 @@ def generate_launch_description():
                 description="Parkur-2 simulation waypoint JSON.",
             ),
             DeclareLaunchArgument(
+                "mission_files",
+                default_value="",
+                description="Comma-separated list of mission files for multi-mission mode.",
+            ),
+            DeclareLaunchArgument(
+                "enable_multi_mission",
+                default_value="false",
+                description="Enable multi-mission mode (Parkur 1 -> Parkur 2 auto transition).",
+            ),
+            DeclareLaunchArgument(
+                "transition_delay_s",
+                default_value="2.0",
+                description="Delay in seconds between missions.",
+            ),
+            DeclareLaunchArgument(
                 "log_dir",
                 default_value="/tmp/ida_otonom_logs",
                 description="Simulation telemetry and costmap output directory.",
@@ -59,19 +78,48 @@ def generate_launch_description():
                 default_value="true",
                 description="Start Parkur-2 turtle-style visualizer.",
             ),
+            DeclareLaunchArgument(
+                "enable_geofence",
+                default_value="true",
+                description="Monitor GPS course boundary and recover inward.",
+            ),
             Node(
                 package="ida_otonom",
                 executable="parkur2_sim_node",
                 name="parkur2_sim_node",
                 output="screen",
-                parameters=[config_file],
+                parameters=[
+                    config_file,
+                    {"detection_topic": "/perception/buoy_detections_raw"},
+                ],
             ),
             Node(
                 package="ida_otonom",
                 executable="mission_manager_node",
                 name="mission_manager_node",
                 output="screen",
-                parameters=[config_file, mission_params],
+                parameters=[
+                    config_file,
+                    mission_params,
+                    {
+                        "enable_multi_mission": ParameterValue(
+                            enable_multi_mission,
+                            value_type=bool,
+                        )
+                    },
+                    {
+                        "transition_delay_s": ParameterValue(
+                            transition_delay_s,
+                            value_type=float,
+                        )
+                    },
+                    {
+                        "mission_files": ParameterValue(
+                            mission_files,
+                            value_type=str,
+                        )
+                    },
+                ],
             ),
             Node(
                 package="ida_otonom",
@@ -82,8 +130,23 @@ def generate_launch_description():
             ),
             Node(
                 package="ida_otonom",
+                executable="geofence_monitor_node",
+                name="geofence_monitor_node",
+                output="screen",
+                condition=IfCondition(enable_geofence),
+                parameters=[config_file, mission_params],
+            ),
+            Node(
+                package="ida_otonom",
                 executable="lidar_processor_node",
                 name="lidar_processor_node",
+                output="screen",
+                parameters=[config_file],
+            ),
+            Node(
+                package="ida_otonom",
+                executable="sensor_cross_validator_node",
+                name="sensor_cross_validator_node",
                 output="screen",
                 parameters=[config_file],
             ),
