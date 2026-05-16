@@ -3,7 +3,7 @@ parkur2_sim_node:
     world_variant: parkur1
     initial_lat: 40.1181000
     initial_lon: 26.4081000
-    initial_heading_deg: 43.0
+    initial_heading_deg: 53.0
     update_rate_hz: 20.0
     scan_rate_hz: 10.0
     detection_rate_hz: 8.0
@@ -120,6 +120,8 @@ parkur2_planner_node:
     corridor_keepout_margin_m: 1.20
     min_corridor_return_angle_deg: 25.0
     sensor_timeout_s: 1.0
+    waypoint_blend_factor: 0.35
+    expected_corridor_width_m: 8.82
 
 sim_visualizer_node:
   ros__parameters:

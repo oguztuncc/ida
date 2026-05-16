@@ -31,6 +31,8 @@ class Parkur2PlannerNode(Node):
         self.declare_parameter("corridor_coast_s", 1.2)
         self.declare_parameter("bearing_rate_limit_degps", 70.0)
         self.declare_parameter("sensor_timeout_s", 1.0)
+        self.declare_parameter("waypoint_blend_factor", 0.0)
+        self.declare_parameter("expected_corridor_width_m", 8.82)
 
         # Legacy parameters may still exist in YAML files; declare them so
         # launch overrides remain harmless while this node uses the new state
@@ -109,6 +111,12 @@ class Parkur2PlannerNode(Node):
         )
         self.sensor_timeout_s = float(
             self.get_parameter("sensor_timeout_s").value
+        )
+        self.waypoint_blend_factor = float(
+            self.get_parameter("waypoint_blend_factor").value
+        )
+        self.expected_corridor_width_m = float(
+            self.get_parameter("expected_corridor_width_m").value
         )
 
         self.heading_deg = None
@@ -345,8 +353,10 @@ class Parkur2PlannerNode(Node):
             if left_gap > 0.0 or right_gap > 0.0:
                 return 1.0 if left_gap >= right_gap else -1.0
 
-        if abs(best_free) > 1.0:
-            return 1.0 if best_free > 0.0 else -1.0
+        # When no corridor is available, always pass on the side OPPOSITE to
+        # the obstacle.  Using best_free here is risky because LiDAR may report
+        # the obstacle's far side as "free space", steering the boat *towards*
+        # the obstacle.
         return -1.0 if obstacle_left > 0.0 else 1.0
 
     def _target_left_for_pass(self, obstacle, corridor) -> float:
@@ -356,6 +366,11 @@ class Parkur2PlannerNode(Node):
         bounds = self._corridor_bounds(corridor)
         if bounds is not None:
             target_left = clamp(target_left, bounds[0], bounds[1])
+        else:
+            # When no corridor is visible, clamp to expected lane width so we
+            # do not drive arbitrarily far outside the course boundaries.
+            half = self.expected_corridor_width_m / 2.0
+            target_left = clamp(target_left, -half, half)
         return target_left
 
     def _body_bearing_for_left(self, target_left_m: float, lookahead_m: float) -> float:
@@ -592,8 +607,18 @@ class Parkur2PlannerNode(Node):
         self.mode = "CRUISE"
         self._reset_pass()
         if corridor is not None:
-            relative = self._nav_relative_from_body_left(
+            corridor_relative = self._nav_relative_from_body_left(
                 float(corridor["body_bearing_deg"])
+            )
+            # Blend corridor center tracking with waypoint guidance.
+            # waypoint_blend_factor = 0.0 -> pure corridor (Parkur 2)
+            # waypoint_blend_factor = 0.3-0.5 -> waypoint pulls stronger (Parkur 1)
+            blend = self.waypoint_blend_factor
+            relative = (1.0 - blend) * corridor_relative + blend * target_relative
+            relative = clamp(
+                relative,
+                -self.max_relative_bearing_deg,
+                self.max_relative_bearing_deg,
             )
             reason = corridor["reason"]
             speed = self.max_speed_mps

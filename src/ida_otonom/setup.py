@@ -27,6 +27,10 @@ setup(
             glob('ida_otonom/missions/*.json'),
         ),
         (
+            os.path.join('share', package_name, 'worlds'),
+            glob('ida_otonom/worlds/*.json'),
+        ),
+        (
             os.path.join('share', package_name, 'parkurlar'),
             glob('ida_otonom/parkurlar/*.json'),
         ),
@@ -63,6 +67,7 @@ setup(
             'safety_node = ida_otonom.safety_node:main',
             'sim_visualizer_node = ida_otonom.sim_visualizer_node:main',
             'parkur2_sim_node = ida_otonom.parkur2_sim_node:main',
+            'parkur_editor_node = ida_otonom.parkur_editor_node:main',
         ],
     },
 )
