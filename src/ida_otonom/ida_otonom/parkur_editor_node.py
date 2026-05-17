@@ -2,6 +2,7 @@ import json
 import math
 import os
 import tkinter as tk
+from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
 import rclpy
@@ -20,6 +21,8 @@ class ParkurEditorNode(Node):
         self.declare_parameter("initial_zoom", 8.0)
         self.declare_parameter("grid_spacing_m", 5.0)
         self.declare_parameter("default_export_dir", "")
+        self.declare_parameter("origin_lat", 40.1181000)
+        self.declare_parameter("origin_lon", 26.4081000)
 
         self.width = int(self.get_parameter("window_width").value)
         self.height = int(self.get_parameter("window_height").value)
@@ -28,6 +31,8 @@ class ParkurEditorNode(Node):
         self.default_export_dir = str(
             self.get_parameter("default_export_dir").value
         )
+        self.origin_lat = float(self.get_parameter("origin_lat").value)
+        self.origin_lon = float(self.get_parameter("origin_lon").value)
 
         self.origin_x = 80
         self.origin_y = self.height - 80
@@ -162,36 +167,42 @@ class ParkurEditorNode(Node):
         self.status_label.config(text=f"Mode: {mode}")
         self._draw()
 
-    def _worlds_dir(self) -> str:
-        return os.path.join(str(package_share_path()), "worlds")
+    def _package_data_dir(self) -> str:
+        local_package_dir = Path(__file__).resolve().parent
+        if (local_package_dir / "missions").is_dir():
+            return str(local_package_dir)
 
-    def _parkurs_dir(self) -> str:
-        return os.path.join(str(package_share_path()), "parkurlar")
+        share_path = package_share_path()
+        for parent in share_path.parents:
+            if parent.name == "install":
+                source_package_dir = (
+                    parent.parent / "src" / "ida_otonom" / "ida_otonom"
+                )
+                if (source_package_dir / "missions").is_dir():
+                    return str(source_package_dir)
 
-    def _parkur_path(self, filename: str, fallback_world: str) -> str:
-        parkur_path = os.path.join(self._parkurs_dir(), filename)
-        if os.path.isfile(parkur_path):
-            return parkur_path
-        return os.path.join(self._worlds_dir(), fallback_world)
+        return str(share_path)
+
+    def _missions_dir(self) -> str:
+        return os.path.join(self._package_data_dir(), "missions")
+
+    def _mission_path(self, filename: str) -> str:
+        return os.path.join(self._missions_dir(), filename)
 
     def _load_parkur1_zikzak(self) -> None:
-        self._load_json_file(
-            self._parkur_path("parkur1_zikzak.json", "parkur1_world.json")
-        )
+        self._load_json_file(self._mission_path("parkur1_zikzak.json"))
 
     def _load_parkur1_corridor(self) -> None:
-        self._load_json_file(
-            self._parkur_path("parkur1_corridor.json", "parkur1_world.json")
-        )
+        self._load_json_file(self._mission_path("parkur1_corridor.json"))
 
     def _load_parkur2(self) -> None:
-        self._load_json_file(self._parkur_path("parkur2.json", "parkur2_world.json"))
+        self._load_json_file(self._mission_path("parkur2_sim.json"))
 
     def _import_json(self) -> None:
         path = filedialog.askopenfilename(
             defaultextension=".json",
             filetypes=[("JSON files", "*.json"), ("All files", "*.*")],
-            initialdir=self.default_export_dir or os.getcwd(),
+            initialdir=self.default_export_dir or self._missions_dir(),
         )
         if path:
             self._load_json_file(path)
@@ -283,9 +294,14 @@ class ParkurEditorNode(Node):
             and "lon" in points[0]
         )
 
-    def _gps_waypoints_to_local(self, points) -> list[tuple[float, float]]:
-        origin_lat = float(points[0]["lat"])
-        origin_lon = float(points[0]["lon"])
+    def _gps_waypoints_to_local(
+        self,
+        points,
+        origin=None,
+    ) -> list[tuple[float, float]]:
+        origin = origin or {}
+        origin_lat = float(origin.get("lat", points[0]["lat"]))
+        origin_lon = float(origin.get("lon", points[0]["lon"]))
         lat_scale = 111_320.0
         lon_scale = lat_scale * math.cos(math.radians(origin_lat))
         local_points = []
@@ -295,10 +311,21 @@ class ParkurEditorNode(Node):
             local_points.append((round(east_m, 2), round(north_m, 2)))
         return local_points
 
-    def _parse_point_list(self, points) -> list[tuple[float, float]]:
+    def _parse_point_list(self, points, origin=None) -> list[tuple[float, float]]:
         if self._is_gps_waypoint_list(points):
-            return self._gps_waypoints_to_local(points)
+            return self._gps_waypoints_to_local(points, origin)
         return [(float(p[0]), float(p[1])) for p in points]
+
+    def _local_waypoints_to_gps(self) -> list[dict]:
+        lat_scale = 111_320.0
+        lon_scale = lat_scale * math.cos(math.radians(self.origin_lat))
+        return [
+            {
+                "lat": round(self.origin_lat + north / lat_scale, 7),
+                "lon": round(self.origin_lon + east / lon_scale, 7),
+            }
+            for east, north in self.waypoints
+        ]
 
     def _load_json_file(self, path: str) -> None:
         try:
@@ -308,10 +335,11 @@ class ParkurEditorNode(Node):
             messagebox.showerror("Load Error", str(exc))
             return
 
+        origin = data.get("origin") or {}
         raw_route = data.get("route", [])
-        raw_waypoints = data.get("waypoints", [])
-        self.route_points = self._parse_point_list(raw_route)
-        self.waypoints = self._parse_point_list(raw_waypoints)
+        raw_waypoints = data.get("local_waypoints", data.get("waypoints", []))
+        self.route_points = self._parse_point_list(raw_route, origin)
+        self.waypoints = self._parse_point_list(raw_waypoints, origin)
         if not self.route_points and self._is_gps_waypoint_list(raw_waypoints):
             self.route_points = list(self.waypoints)
         self.boundaries = data.get("boundaries", [])
@@ -349,8 +377,15 @@ class ParkurEditorNode(Node):
     def _export_json(self) -> None:
         data = {
             "variant": "custom",
+            "origin": {
+                "lat": self.origin_lat,
+                "lon": self.origin_lon,
+            },
+            "waypoints": self._local_waypoints_to_gps(),
             "route": [[round(e, 2), round(n, 2)] for e, n in self.route_points],
-            "waypoints": [[round(e, 2), round(n, 2)] for e, n in self.waypoints],
+            "local_waypoints": [
+                [round(e, 2), round(n, 2)] for e, n in self.waypoints
+            ],
             "boundaries": self.boundaries,
         }
         if self.obstacles:
@@ -359,7 +394,7 @@ class ParkurEditorNode(Node):
         path = filedialog.asksaveasfilename(
             defaultextension=".json",
             filetypes=[("JSON files", "*.json"), ("All files", "*.*")],
-            initialdir=self.default_export_dir or self._parkurs_dir(),
+            initialdir=self.default_export_dir or self._missions_dir(),
             initialfile="custom_parkur.json",
         )
         if path:

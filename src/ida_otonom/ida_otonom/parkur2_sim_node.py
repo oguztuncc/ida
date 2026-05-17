@@ -157,33 +157,29 @@ class Parkur2SimNode(Node):
             f"{len(self.objects)} object(s), time_scale={self.time_scale:.1f}x"
         )
 
-    def _worlds_dir(self) -> str:
-        return os.path.join(str(package_share_path()), "worlds")
-
-    def _parkurs_dir(self) -> str:
-        return os.path.join(str(package_share_path()), "parkurlar")
+    def _missions_dir(self) -> str:
+        return os.path.join(str(package_share_path()), "missions")
 
     def _resolve_world_path(self, path: str) -> str:
         if os.path.isabs(path):
             return path
-        parkur_path = os.path.join(self._parkurs_dir(), path)
-        if os.path.isfile(parkur_path):
-            return parkur_path
-        return os.path.join(self._worlds_dir(), path)
+        return os.path.join(self._missions_dir(), path)
 
     def _build_world(self) -> list[SimObject]:
         if self.world_variant == "custom" and self.custom_world_path:
             path = self._resolve_world_path(self.custom_world_path)
         else:
-            parkur_path = os.path.join(
-                self._parkurs_dir(),
-                f"{self.world_variant}.json",
+            candidates = [
+                os.path.join(self._missions_dir(), f"{self.world_variant}.json"),
+                os.path.join(
+                    self._missions_dir(),
+                    f"{self.world_variant}_sim.json",
+                ),
+            ]
+            path = next(
+                (candidate for candidate in candidates if os.path.isfile(candidate)),
+                candidates[0],
             )
-            if os.path.isfile(parkur_path):
-                path = parkur_path
-            else:
-                filename = f"{self.world_variant}_world.json"
-                path = os.path.join(self._worlds_dir(), filename)
 
         if os.path.isfile(path):
             try:

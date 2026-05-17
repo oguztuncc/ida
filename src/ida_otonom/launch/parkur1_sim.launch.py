@@ -129,7 +129,10 @@ def generate_launch_description():
                     config_file,
                     {
                         "world_variant": "custom",
-                        "custom_world_path": "parkur1_zikzak.json",
+                        "custom_world_path": ParameterValue(
+                            mission_file,
+                            value_type=str,
+                        ),
                         "detection_topic": "/perception/buoy_detections_raw",
                     },
                 ],

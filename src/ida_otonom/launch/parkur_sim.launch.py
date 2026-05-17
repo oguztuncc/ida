@@ -10,7 +10,6 @@ from launch_ros.substitutions import FindPackageShare
 def generate_launch_description():
     config_file = LaunchConfiguration("config_file")
     mission_file = LaunchConfiguration("mission_file")
-    parkur_file = LaunchConfiguration("parkur_file")
     arrival_radius_m = LaunchConfiguration("arrival_radius_m")
     log_dir = LaunchConfiguration("log_dir")
     enable_logger = LaunchConfiguration("enable_logger")
@@ -41,13 +40,8 @@ def generate_launch_description():
             DeclareLaunchArgument(
                 "mission_file",
                 default_value=default_mission,
-                description="Waypoint mission JSON path.",
-            ),
-            DeclareLaunchArgument(
-                "parkur_file",
-                default_value="parkur1_zikzak.json",
                 description=(
-                    "Parkur JSON file name under parkurlar/ or an absolute path."
+                    "Mission/world JSON path under missions/ or an absolute path."
                 ),
             ),
             DeclareLaunchArgument(
@@ -100,7 +94,7 @@ def generate_launch_description():
                     {
                         "world_variant": "custom",
                         "custom_world_path": ParameterValue(
-                            parkur_file,
+                            mission_file,
                             value_type=str,
                         ),
                     },
@@ -144,6 +138,13 @@ def generate_launch_description():
                 package="ida_otonom",
                 executable="lidar_processor_node",
                 name="lidar_processor_node",
+                output="screen",
+                parameters=[config_file],
+            ),
+            Node(
+                package="ida_otonom",
+                executable="sensor_cross_validator_node",
+                name="sensor_cross_validator_node",
                 output="screen",
                 parameters=[config_file],
             ),

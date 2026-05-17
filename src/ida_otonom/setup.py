@@ -26,14 +26,6 @@ setup(
             os.path.join('share', package_name, 'missions'),
             glob('ida_otonom/missions/*.json'),
         ),
-        (
-            os.path.join('share', package_name, 'worlds'),
-            glob('ida_otonom/worlds/*.json'),
-        ),
-        (
-            os.path.join('share', package_name, 'parkurlar'),
-            glob('ida_otonom/parkurlar/*.json'),
-        ),
     ],
     install_requires=['setuptools', 'pymavlink'],
     zip_safe=True,

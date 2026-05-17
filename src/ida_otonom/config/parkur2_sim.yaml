@@ -1,5 +1,7 @@
 parkur2_sim_node:
   ros__parameters:
+    world_variant: custom
+    custom_world_path: parkur2_sim.json
     initial_lat: 40.1181000
     initial_lon: 26.4081000
     initial_heading_deg: 73.0
@@ -123,8 +125,8 @@ corridor_tracker_node:
     max_boundary_bearing_deg: 75.0
     min_boundary_range_m: 0.4
     max_boundary_range_m: 14.0
-    center_smoothing_alpha: 0.25
-    max_center_step_m: 0.6
+    center_smoothing_alpha: 0.20
+    max_center_step_m: 0.4
     obstacle_avoidance_enabled: false
     obstacle_avoidance_range_m: 8.0
     obstacle_avoidance_margin_m: 2.20
@@ -141,21 +143,24 @@ parkur2_planner_node:
     recovery_backoff_duration_s: 1.2
     recovery_backoff_speed_mps: -0.12
     recovery_turn_bearing_deg: 25.0
-    safe_clearance_m: 1.0
+    safe_clearance_m: 1.10
     max_relative_bearing_deg: 35.0
     max_pass_bearing_deg: 32.0
     max_return_bearing_deg: 14.0
-    corridor_min_confidence: 0.35
+    corridor_min_confidence: 0.45
     corridor_keepout_margin_m: 1.20
-    obstacle_pass_margin_m: 1.80
-    path_block_margin_m: 2.30
+    obstacle_pass_margin_m: 1.35
+    min_pass_gap_width_m: 1.20
+    path_block_margin_m: 2.10
     pass_lookahead_m: 3.0
     return_lookahead_m: 8.0
     pass_min_duration_s: 4.0
     pass_release_after_lost_s: 5.0
-    corridor_coast_s: 2.0
+    corridor_coast_s: 0.0
     bearing_rate_limit_degps: 80.0
     sensor_timeout_s: 1.0
+    require_corridor_for_motion: true
+    corridor_search_angle_deg: 0.0
     waypoint_blend_factor: 0.0
     avoid_start_distance_m: 5.0
     expected_corridor_width_m: 8.82

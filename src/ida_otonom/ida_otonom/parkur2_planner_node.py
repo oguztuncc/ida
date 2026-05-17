@@ -28,6 +28,7 @@ class Parkur2PlannerNode(Node):
         self.declare_parameter("corridor_min_confidence", 0.45)
         self.declare_parameter("corridor_keepout_margin_m", 1.20)
         self.declare_parameter("obstacle_pass_margin_m", 1.20)
+        self.declare_parameter("min_pass_gap_width_m", 1.20)
         self.declare_parameter("path_block_margin_m", 0.0)
         self.declare_parameter("pass_lookahead_m", 6.0)
         self.declare_parameter("return_lookahead_m", 6.0)
@@ -105,6 +106,9 @@ class Parkur2PlannerNode(Node):
         )
         self.obstacle_pass_margin_m = float(
             self.get_parameter("obstacle_pass_margin_m").value
+        )
+        self.min_pass_gap_width_m = float(
+            self.get_parameter("min_pass_gap_width_m").value
         )
         configured_path_block_margin = float(
             self.get_parameter("path_block_margin_m").value
@@ -347,6 +351,7 @@ class Parkur2PlannerNode(Node):
                         ),
                         "confidence": confidence,
                         "reason": "corridor_track",
+                        "tracking_method": self.corridor.get("tracking_method"),
                     }
 
         if current is not None:
@@ -358,6 +363,8 @@ class Parkur2PlannerNode(Node):
             self.last_corridor is not None
             and now - self.last_corridor_ts <= self.corridor_coast_s
         ):
+            if self.require_corridor_for_motion:
+                return None
             coast = dict(self.last_corridor)
             coast["confidence"] = min(float(coast["confidence"]), 0.45)
             coast["reason"] = "corridor_coast"
@@ -426,21 +433,153 @@ class Parkur2PlannerNode(Node):
         return min_left <= left <= max_left
 
     def _choose_pass_side(self, obstacle, corridor, best_free: float) -> float:
+        gap_options = self._pass_gap_options(obstacle, corridor)
+        best = gap_options.get("best")
+        if best is not None:
+            return float(best["side"])
+
         obstacle_left = float(obstacle["left_m"])
-        bounds = self._corridor_bounds(corridor)
-        if bounds is not None:
-            min_left, max_left = bounds
-            margin = max(self.obstacle_pass_margin_m, self.safe_clearance_m / 2.0)
-            left_gap = max_left - (obstacle_left + margin)
-            right_gap = (obstacle_left - margin) - min_left
-            if left_gap > 0.0 or right_gap > 0.0:
-                return 1.0 if left_gap >= right_gap else -1.0
+        left_width = gap_options.get("left_width_m")
+        right_width = gap_options.get("right_width_m")
+        if left_width is not None and right_width is not None:
+            return 1.0 if left_width >= right_width else -1.0
 
         # When no corridor is available, always pass on the side OPPOSITE to
         # the obstacle.  Using best_free here is risky because LiDAR may report
         # the obstacle's far side as "free space", steering the boat *towards*
         # the obstacle.
         return -1.0 if obstacle_left > 0.0 else 1.0
+
+    def _pass_gap_options(self, obstacle, corridor) -> dict:
+        result = {
+            "left_width_m": None,
+            "right_width_m": None,
+            "left_target_m": None,
+            "right_target_m": None,
+            "best": None,
+        }
+        if obstacle is None:
+            return result
+        bounds = self._corridor_bounds(corridor)
+        if bounds is None:
+            return result
+
+        min_left, max_left = bounds
+        obstacle_left = float(obstacle["left_m"])
+        obstacle_clearance = max(
+            self.obstacle_pass_margin_m,
+            self.safe_clearance_m / 2.0,
+        )
+
+        left_start = obstacle_left + obstacle_clearance
+        left_end = max_left
+        left_width = max(0.0, left_end - left_start)
+        right_start = min_left
+        right_end = obstacle_left - obstacle_clearance
+        right_width = max(0.0, right_end - right_start)
+
+        result["left_width_m"] = left_width
+        result["right_width_m"] = right_width
+        if left_width > 0.0:
+            result["left_target_m"] = (left_start + left_end) / 2.0
+        if right_width > 0.0:
+            result["right_target_m"] = (right_start + right_end) / 2.0
+
+        feasible = []
+        if left_width >= self.min_pass_gap_width_m:
+            feasible.append(
+                {
+                    "side": 1.0,
+                    "width_m": left_width,
+                    "target_left_m": result["left_target_m"],
+                    "label": "left",
+                }
+            )
+        if right_width >= self.min_pass_gap_width_m:
+            feasible.append(
+                {
+                    "side": -1.0,
+                    "width_m": right_width,
+                    "target_left_m": result["right_target_m"],
+                    "label": "right",
+                }
+            )
+        if feasible:
+            result["best"] = max(feasible, key=lambda item: item["width_m"])
+        else:
+            # No fully-safe gap: if a partial gap exists (>0.2 m), favour the
+            # larger side so BLOCKED_ALIGN can rotate toward it.
+            partial = []
+            if left_width > 0.2:
+                partial.append(
+                    {
+                        "side": 1.0,
+                        "width_m": left_width,
+                        "target_left_m": result["left_target_m"],
+                        "label": "left_partial",
+                    }
+                )
+            if right_width > 0.2:
+                partial.append(
+                    {
+                        "side": -1.0,
+                        "width_m": right_width,
+                        "target_left_m": result["right_target_m"],
+                        "label": "right_partial",
+                    }
+                )
+            if partial:
+                result["best"] = max(
+                    partial, key=lambda item: item["width_m"]
+                )
+        return result
+
+    def _has_safe_pass_gap(self, obstacle, corridor) -> bool:
+        if obstacle is None:
+            return True
+        return self._pass_gap_options(obstacle, corridor).get("best") is not None
+
+    def _stop_for_no_safe_pass(
+        self,
+        front_clearance,
+        lidar_state: str,
+        corridor,
+        obstacle,
+    ) -> None:
+        # When blocked, stop forward motion but continue rotating toward
+        # the target or corridor center so the vehicle can re-align.
+        target_relative = self._target_relative_bearing()
+
+        if corridor is not None:
+            corridor_relative = self._nav_relative_from_body_left(
+                clamp(
+                    float(corridor["body_bearing_deg"]),
+                    -self.max_return_bearing_deg,
+                    self.max_return_bearing_deg,
+                )
+            )
+            relative = self._blend_relative_bearing(
+                corridor_relative, target_relative, 0.3
+            )
+        else:
+            relative = target_relative
+
+        relative = clamp(
+            relative,
+            -self.max_relative_bearing_deg,
+            self.max_relative_bearing_deg,
+        )
+
+        self._publish_plan(
+            "BLOCKED_ALIGN",
+            relative,
+            0.0,
+            front_clearance,
+            lidar_state,
+            corridor,
+            obstacle,
+            "blocked_no_safe_pass_align",
+        )
 
     def _scan_available(self, timestamp: float) -> bool:
         if not self.scan_before_bypass or self.scan_duration_s <= 0.0:
@@ -502,6 +641,10 @@ class Parkur2PlannerNode(Node):
             self.mode = "RETURN_TO_CENTER" if corridor is not None else "CRUISE"
             return False
 
+        if not self._has_safe_pass_gap(obstacle, corridor):
+            self.mode = "BLOCKED_ALIGN"
+            return False
+
         if self.scan_left_score > self.scan_right_score + 0.5:
             self.pass_side = 1.0
         elif self.scan_right_score > self.scan_left_score + 0.5:
@@ -533,18 +676,21 @@ class Parkur2PlannerNode(Node):
         )
 
     def _target_left_for_pass(self, obstacle, corridor) -> float:
-        obstacle_left = float(obstacle["left_m"])
-        side = 1.0 if self.pass_side >= 0.0 else -1.0
-        target_left = obstacle_left + side * self.obstacle_pass_margin_m
+        gap_options = self._pass_gap_options(obstacle, corridor)
+        preferred_key = "left_target_m" if self.pass_side >= 0.0 else "right_target_m"
+        preferred_target = gap_options.get(preferred_key)
+        if preferred_target is not None:
+            return float(preferred_target)
+
+        best = gap_options.get("best")
+        if best is not None and best.get("target_left_m") is not None:
+            self.pass_side = float(best["side"])
+            return float(best["target_left_m"])
+
         bounds = self._corridor_bounds(corridor)
         if bounds is not None:
-            target_left = clamp(target_left, bounds[0], bounds[1])
-        else:
-            # When no corridor is visible, clamp to expected lane width so we
-            # do not drive arbitrarily far outside the course boundaries.
-            half = self.expected_corridor_width_m / 2.0
-            target_left = clamp(target_left, -half, half)
-        return target_left
+            return clamp(float(corridor["center_left_m"]), bounds[0], bounds[1])
+        return 0.0
 
     def _body_bearing_for_left(self, target_left_m: float, lookahead_m: float) -> float:
         return math.degrees(math.atan2(target_left_m, max(lookahead_m, 0.5)))
@@ -625,6 +771,8 @@ class Parkur2PlannerNode(Node):
         else:
             relative_bearing = self._rate_limit_relative(relative_bearing, timestamp)
 
+        pass_gaps = self._pass_gap_options(obstacle, corridor)
+        selected_gap = pass_gaps.get("best")
         safe_bearing = self._absolute_from_relative(relative_bearing)
         self.safe_bearing_pub.publish(Float32(data=float(safe_bearing)))
         self.speed_limit_pub.publish(Float32(data=float(speed_limit)))
@@ -661,6 +809,18 @@ class Parkur2PlannerNode(Node):
                         else obstacle["left_m"],
                         "pass_side": self.pass_side,
                         "target_left_m": self.target_left_m,
+                        "left_pass_gap_m": pass_gaps.get("left_width_m"),
+                        "right_pass_gap_m": pass_gaps.get("right_width_m"),
+                        "selected_pass_gap": None
+                        if selected_gap is None
+                        else selected_gap.get("label"),
+                        "selected_pass_gap_width_m": None
+                        if selected_gap is None
+                        else selected_gap.get("width_m"),
+                        "selected_pass_target_left_m": None
+                        if selected_gap is None
+                        else selected_gap.get("target_left_m"),
+                        "min_pass_gap_width_m": self.min_pass_gap_width_m,
                         "scan_elapsed_s": max(0.0, timestamp - self.scan_started_ts)
                         if mode == "SCAN_BEFORE_PASS"
                         else None,
@@ -850,6 +1010,14 @@ class Parkur2PlannerNode(Node):
         if self.mode == "PASS_COMMITTED":
             if obstacle is not None:
                 self.pass_last_obstacle_ts = timestamp
+                if not self._has_safe_pass_gap(obstacle, corridor):
+                    self._stop_for_no_safe_pass(
+                        front_clearance,
+                        lidar_state,
+                        corridor,
+                        obstacle,
+                    )
+                    return
 
             pass_age = timestamp - self.pass_started_ts
             lost_age = timestamp - self.pass_last_obstacle_ts
@@ -908,6 +1076,14 @@ class Parkur2PlannerNode(Node):
 
         if self.mode == "RETURN_TO_CENTER":
             if self._obstacle_requires_pass(obstacle, corridor):
+                if not self._has_safe_pass_gap(obstacle, corridor):
+                    self._stop_for_no_safe_pass(
+                        front_clearance,
+                        lidar_state,
+                        corridor,
+                        obstacle,
+                    )
+                    return
                 if self._scan_available(timestamp):
                     self._start_scan_before_pass(
                         obstacle,
@@ -992,6 +1168,14 @@ class Parkur2PlannerNode(Node):
                 self._reset_pass()
 
         if self._obstacle_requires_pass(obstacle, corridor):
+            if not self._has_safe_pass_gap(obstacle, corridor):
+                self._stop_for_no_safe_pass(
+                    front_clearance,
+                    lidar_state,
+                    corridor,
+                    obstacle,
+                )
+                return
             if self._scan_available(timestamp):
                 self._start_scan_before_pass(
                     obstacle,
@@ -1063,16 +1247,6 @@ class Parkur2PlannerNode(Node):
         if corridor is not None:
             corridor_relative = self._nav_relative_from_body_left(
                 float(corridor["body_bearing_deg"])
-            )
-            # Blend corridor center tracking with waypoint guidance.
-            # waypoint_blend_factor = 0.0 -> pure corridor (Parkur 2)
-            # waypoint_blend_factor = 0.3-0.5 -> waypoint pulls stronger (Parkur 1)
-            blend = self.waypoint_blend_factor
-            relative = (1.0 - blend) * corridor_relative + blend * target_relative
-            relative = clamp(
-                relative,
-                -self.max_relative_bearing_deg,
-                self.max_relative_bearing_deg,
             )
             reason = corridor["reason"]
             speed = self.max_speed_mps
