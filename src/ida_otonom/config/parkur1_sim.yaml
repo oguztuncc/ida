@@ -1,6 +1,7 @@
 parkur2_sim_node:
   ros__parameters:
-    world_variant: parkur1
+    world_variant: custom
+    custom_world_path: parkur1_zikzak.json
     initial_lat: 40.1181000
     initial_lon: 26.4081000
     initial_heading_deg: 53.0

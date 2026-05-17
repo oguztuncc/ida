@@ -1,0 +1,26 @@
+{
+  "variant": "parkur1_corridor",
+  "route": [
+    [0.0, 0.0],
+    [16.0, 15.0],
+    [34.0, 34.0],
+    [50.0, 56.0],
+    [67.0, 76.0],
+    [84.0, 94.0],
+    [101.0, 111.0]
+  ],
+  "waypoints": [
+    [0.0, 0.0],
+    [16.0, 15.0],
+    [34.0, 34.0],
+    [50.0, 56.0],
+    [67.0, 76.0],
+    [84.0, 94.0],
+    [101.0, 111.0]
+  ],
+  "build_method": "course_boundaries",
+  "object_prefix": "parkur1_corridor_course",
+  "spacing_m": 7.0,
+  "course_width_m": 8.82,
+  "course_jitter_m": 0.45
+}

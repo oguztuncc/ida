@@ -27,7 +27,7 @@ def generate_launch_description():
         [FindPackageShare("ida_otonom"), "config", "parkur1_sim.yaml"]
     )
     default_mission = PathJoinSubstitution(
-        [FindPackageShare("ida_otonom"), "missions", "mission.json"]
+        [FindPackageShare("ida_otonom"), "missions", "parkur1_zikzak.json"]
     )
     default_parkur2_mission = PathJoinSubstitution(
         [FindPackageShare("ida_otonom"), "missions", "parkur2_sim.json"]
@@ -127,7 +127,11 @@ def generate_launch_description():
                 condition=IfCondition(enable_corridor_planning),
                 parameters=[
                     config_file,
-                    {"detection_topic": "/perception/buoy_detections_raw"},
+                    {
+                        "world_variant": "custom",
+                        "custom_world_path": "parkur1_zikzak.json",
+                        "detection_topic": "/perception/buoy_detections_raw",
+                    },
                 ],
             ),
             Node(

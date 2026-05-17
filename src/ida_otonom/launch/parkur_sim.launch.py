@@ -24,7 +24,7 @@ def generate_launch_description():
         [FindPackageShare("ida_otonom"), "config", "parkur1_sim.yaml"]
     )
     default_mission = PathJoinSubstitution(
-        [FindPackageShare("ida_otonom"), "missions", "mission.json"]
+        [FindPackageShare("ida_otonom"), "missions", "parkur1_zikzak.json"]
     )
 
     common_mission_params = {
@@ -45,7 +45,7 @@ def generate_launch_description():
             ),
             DeclareLaunchArgument(
                 "parkur_file",
-                default_value="parkur1.json",
+                default_value="parkur1_zikzak.json",
                 description=(
                     "Parkur JSON file name under parkurlar/ or an absolute path."
                 ),

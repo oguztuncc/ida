@@ -30,7 +30,7 @@ def generate_launch_description():
         [FindPackageShare("ida_otonom"), "config", "parkur1_sim.yaml"]
     )
     default_parkur1_mission = PathJoinSubstitution(
-        [FindPackageShare("ida_otonom"), "missions", "mission.json"]
+        [FindPackageShare("ida_otonom"), "missions", "parkur1_zikzak.json"]
     )
     default_parkur2_config = PathJoinSubstitution(
         [FindPackageShare("ida_otonom"), "config", "parkur2_sim.yaml"]
@@ -125,8 +125,11 @@ def generate_launch_description():
                 output="screen",
                 parameters=[
                     parkur1_config,
-                    {"world_variant": "parkur1"},
-                    {"detection_topic": "/perception/buoy_detections_raw"},
+                    {
+                        "world_variant": "custom",
+                        "custom_world_path": "parkur1_zikzak.json",
+                        "detection_topic": "/perception/buoy_detections_raw",
+                    },
                 ],
             ),
 

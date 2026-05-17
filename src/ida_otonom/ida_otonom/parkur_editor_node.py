@@ -86,7 +86,16 @@ class ParkurEditorNode(Node):
         tk.Frame(self.toolbar, bg="#1a2f3d", width=20).pack(side=tk.LEFT)
 
         tk.Button(
-            self.toolbar, text="Load Parkur1", command=self._load_parkur1, **btn_cfg
+            self.toolbar,
+            text="Load P1 Zikzak",
+            command=self._load_parkur1_zikzak,
+            **btn_cfg,
+        ).pack(side=tk.LEFT, padx=4, pady=4)
+        tk.Button(
+            self.toolbar,
+            text="Load P1 Corridor",
+            command=self._load_parkur1_corridor,
+            **btn_cfg,
         ).pack(side=tk.LEFT, padx=4, pady=4)
         tk.Button(
             self.toolbar, text="Load Parkur2", command=self._load_parkur2, **btn_cfg
@@ -165,8 +174,15 @@ class ParkurEditorNode(Node):
             return parkur_path
         return os.path.join(self._worlds_dir(), fallback_world)
 
-    def _load_parkur1(self) -> None:
-        self._load_json_file(self._parkur_path("parkur1.json", "parkur1_world.json"))
+    def _load_parkur1_zikzak(self) -> None:
+        self._load_json_file(
+            self._parkur_path("parkur1_zikzak.json", "parkur1_world.json")
+        )
+
+    def _load_parkur1_corridor(self) -> None:
+        self._load_json_file(
+            self._parkur_path("parkur1_corridor.json", "parkur1_world.json")
+        )
 
     def _load_parkur2(self) -> None:
         self._load_json_file(self._parkur_path("parkur2.json", "parkur2_world.json"))
@@ -259,6 +275,31 @@ class ParkurEditorNode(Node):
                 station_index += 1
         return boundaries
 
+    def _is_gps_waypoint_list(self, points) -> bool:
+        return (
+            bool(points)
+            and isinstance(points[0], dict)
+            and "lat" in points[0]
+            and "lon" in points[0]
+        )
+
+    def _gps_waypoints_to_local(self, points) -> list[tuple[float, float]]:
+        origin_lat = float(points[0]["lat"])
+        origin_lon = float(points[0]["lon"])
+        lat_scale = 111_320.0
+        lon_scale = lat_scale * math.cos(math.radians(origin_lat))
+        local_points = []
+        for point in points:
+            east_m = (float(point["lon"]) - origin_lon) * lon_scale
+            north_m = (float(point["lat"]) - origin_lat) * lat_scale
+            local_points.append((round(east_m, 2), round(north_m, 2)))
+        return local_points
+
+    def _parse_point_list(self, points) -> list[tuple[float, float]]:
+        if self._is_gps_waypoint_list(points):
+            return self._gps_waypoints_to_local(points)
+        return [(float(p[0]), float(p[1])) for p in points]
+
     def _load_json_file(self, path: str) -> None:
         try:
             with open(path, "r", encoding="utf-8") as f:
@@ -267,8 +308,12 @@ class ParkurEditorNode(Node):
             messagebox.showerror("Load Error", str(exc))
             return
 
-        self.route_points = [tuple(p) for p in data.get("route", [])]
-        self.waypoints = [tuple(p) for p in data.get("waypoints", [])]
+        raw_route = data.get("route", [])
+        raw_waypoints = data.get("waypoints", [])
+        self.route_points = self._parse_point_list(raw_route)
+        self.waypoints = self._parse_point_list(raw_waypoints)
+        if not self.route_points and self._is_gps_waypoint_list(raw_waypoints):
+            self.route_points = list(self.waypoints)
         self.boundaries = data.get("boundaries", [])
         self.obstacles = data.get("obstacles", [])
 
@@ -276,7 +321,7 @@ class ParkurEditorNode(Node):
         if "build_method" in data and not self.boundaries:
             build_method = data.get("build_method", "")
             course_width = float(data.get("course_width_m", 8.82))
-            route = [tuple(p) for p in data.get("route", [])]
+            route = list(self.route_points)
             if build_method == "station_pairs":
                 stations = [tuple(p) for p in data.get("stations", [])]
                 self.boundaries = self._build_station_pairs(route, stations, course_width)
