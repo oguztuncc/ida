@@ -22,6 +22,8 @@ class LidarProcessorNode(Node):
         self.declare_parameter("avoidance_release_distance_m", 5.0)
         self.declare_parameter("latch_avoidance_direction", True)
         self.declare_parameter("front_path_half_width_m", 0.70)
+        self.declare_parameter("vehicle_width_m", 1.50)
+        self.declare_parameter("vehicle_length_m", 2.00)
 
         self.collision_distance_m = float(
             self.get_parameter("collision_distance_m").value
@@ -52,6 +54,16 @@ class LidarProcessorNode(Node):
             0.1,
             float(self.get_parameter("front_path_half_width_m").value),
         )
+        self.vehicle_width_m = max(
+            0.1,
+            float(self.get_parameter("vehicle_width_m").value),
+        )
+        self.vehicle_length_m = max(
+            0.1,
+            float(self.get_parameter("vehicle_length_m").value),
+        )
+        self.vehicle_half_width_m = self.vehicle_width_m / 2.0
+        self.vehicle_half_length_m = self.vehicle_length_m / 2.0
         self.last_best_angle_deg = 0.0
         self.avoidance_sign = 0.0
 
@@ -101,6 +113,23 @@ class LidarProcessorNode(Node):
             if forward > 0.05 and abs(left) <= self.front_path_half_width_m:
                 forward_distances.append(forward)
         return min(forward_distances) if forward_distances else 999.0
+
+    def _footprint_clearance(self, forward: float, left: float) -> float:
+        dx = abs(forward) - self.vehicle_half_length_m
+        dy = abs(left) - self.vehicle_half_width_m
+        outside = math.hypot(max(dx, 0.0), max(dy, 0.0))
+        inside = min(max(dx, dy), 0.0)
+        return outside + inside
+
+    def _front_footprint_clearance(self, values: List[Tuple[float, float]]) -> float:
+        clearances = []
+        for angle_deg, distance in values:
+            angle_rad = math.radians(angle_deg)
+            forward = distance * math.cos(angle_rad)
+            left = distance * math.sin(angle_rad)
+            if forward > -self.vehicle_half_length_m:
+                clearances.append(self._footprint_clearance(forward, left))
+        return min(clearances) if clearances else 999.0
 
     def _preferred_escape_sign(
         self,
@@ -185,10 +214,11 @@ class LidarProcessorNode(Node):
 
         front_min = self._sector_min(front)
         front_path_min = self._front_path_clearance(values)
+        front_footprint_min = self._front_footprint_clearance(values)
         left_min = self._sector_min(left)
         right_min = self._sector_min(right)
 
-        collision = front_path_min < self.collision_distance_m
+        collision = front_footprint_min < self.collision_distance_m
         best_angle, best_clearance = self._best_free_angle(values, front_min)
 
         payload = {
@@ -197,7 +227,10 @@ class LidarProcessorNode(Node):
             "front_clearance_m": front_min,
             "front_sector_clearance_m": front_min,
             "front_path_clearance_m": front_path_min,
+            "front_footprint_clearance_m": front_footprint_min,
             "front_path_half_width_m": self.front_path_half_width_m,
+            "vehicle_width_m": self.vehicle_width_m,
+            "vehicle_length_m": self.vehicle_length_m,
             "left_clearance_m": left_min,
             "right_clearance_m": right_min,
             "best_free_angle_deg": best_angle,

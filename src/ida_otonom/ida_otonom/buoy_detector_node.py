@@ -105,16 +105,16 @@ class BuoyDetectorNode(Node):
 
     def _load_model(self):
         if not self.enable_yolo:
-            self.get_logger().warn("YOLO disabled; publishing empty detections")
+            self.get_logger().warning("YOLO disabled; publishing empty detections")
             return None
         if YOLO is None:
-            self.get_logger().warn(
+            self.get_logger().warning(
                 "ultralytics is not installed; buoy detector stays in "
                 "safe empty-detection mode"
             )
             return None
         if not os.path.exists(os.path.expanduser(self.model_path)):
-            self.get_logger().warn(
+            self.get_logger().warning(
                 f"YOLO model not found at {self.model_path}; "
                 "replace this path when the trained model is ready"
             )
@@ -141,7 +141,7 @@ class BuoyDetectorNode(Node):
                 desired_encoding="passthrough",
             )
         except Exception as exc:
-            self.get_logger().warn(f"Depth conversion failed: {exc}")
+            self.get_logger().warning(f"Depth conversion failed: {exc}")
 
     def _range_at(self, cx_px: float, cy_px: float) -> Optional[float]:
         if self.latest_depth is None:
@@ -353,7 +353,7 @@ class BuoyDetectorNode(Node):
         try:
             frame = self.bridge.imgmsg_to_cv2(msg, desired_encoding="bgr8")
         except Exception as exc:
-            self.get_logger().warn(f"Color conversion failed: {exc}")
+            self.get_logger().warning(f"Color conversion failed: {exc}")
             return
 
         timestamp = now_ts()

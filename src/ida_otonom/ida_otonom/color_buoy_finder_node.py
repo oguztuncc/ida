@@ -154,7 +154,7 @@ class ColorBuoyFinderNode(Node):
             self._camera_color_detections = color_detections
             self.detections_ts = now_ts()
         except Exception as e:
-            self.get_logger().warn(f"detections_cb error: {e}")
+            self.get_logger().warning(f"detections_cb error: {e}")
 
     def _cluster_objects(self, scan: LaserScan) -> list[dict]:
         """
@@ -299,7 +299,7 @@ class ColorBuoyFinderNode(Node):
                 target_objects.append(obj)
 
         if not target_objects:
-            self.get_logger().warn(
+            self.get_logger().warning(
                 "No matching target objects found",
                 throttle_duration_sec=2.0,
             )
@@ -316,7 +316,7 @@ class ColorBuoyFinderNode(Node):
 
         # Güven kontrolü (düşük güven de kabul et - simülasyonda güven hesabı farklı)
         if best["confidence"] < self.detection_confidence_threshold:
-            self.get_logger().warn(
+            self.get_logger().warning(
                 f"Confidence low ({best['confidence']:.2f}) but accepting target",
                 throttle_duration_sec=2.0,
             )
@@ -330,7 +330,7 @@ class ColorBuoyFinderNode(Node):
 
         # Sensor timeout kontrolü
         if now - self.scan_ts > self.sensor_timeout_s:
-            self.get_logger().warn("LiDAR timeout", throttle_duration_sec=5.0)
+            self.get_logger().warning("LiDAR timeout", throttle_duration_sec=5.0)
             return
 
         if self.latest_scan is None:

@@ -46,7 +46,9 @@ class Parkur2SimNode(Node):
         self.declare_parameter("detection_fov_deg", 110.0)
         self.declare_parameter("detection_topic", "/perception/buoy_detections")
         self.declare_parameter("world_variant", "parkur2")
-        self.declare_parameter("course_width_m", 8.82)
+        self.declare_parameter("course_width_m", 8.42)
+        self.declare_parameter("vehicle_width_m", 1.50)
+        self.declare_parameter("vehicle_length_m", 2.00)
         self.declare_parameter("course_jitter_m", 0.0)
         self.declare_parameter("include_obstacles", True)
         self.declare_parameter("custom_world_path", "")
@@ -87,6 +89,16 @@ class Parkur2SimNode(Node):
             2.0,
             float(self.get_parameter("course_width_m").value),
         )
+        self.vehicle_width_m = max(
+            0.1,
+            float(self.get_parameter("vehicle_width_m").value),
+        )
+        self.vehicle_length_m = max(
+            0.1,
+            float(self.get_parameter("vehicle_length_m").value),
+        )
+        self.vehicle_half_width_m = self.vehicle_width_m / 2.0
+        self.vehicle_half_length_m = self.vehicle_length_m / 2.0
         self.course_jitter_m = max(
             0.0,
             float(self.get_parameter("course_jitter_m").value),
@@ -189,7 +201,7 @@ class Parkur2SimNode(Node):
                     f"Failed to load world from {path}: {exc}. Falling back to legacy build."
                 )
         else:
-            self.get_logger().warn(
+            self.get_logger().warning(
                 f"World JSON not found at {path}. Falling back to legacy build."
             )
 
@@ -232,7 +244,7 @@ class Parkur2SimNode(Node):
                         class_name=b.get("class_name", "course_buoy"),
                         east_m=float(b["east_m"]),
                         north_m=float(b["north_m"]),
-                        radius_m=float(b.get("radius_m", 0.35)),
+                        radius_m=float(b.get("radius_m", 0.15)),
                         hue_deg=float(b.get("hue_deg", 28.0)),
                         color=b.get("color", "#ff8b2e"),
                     )
@@ -267,7 +279,7 @@ class Parkur2SimNode(Node):
                     )
                 )
             else:
-                self.get_logger().warn(f"Unknown build_method: {build_method}")
+                self.get_logger().warning(f"Unknown build_method: {build_method}")
 
         for obs in data.get("obstacles", []):
             objects.append(
@@ -277,7 +289,7 @@ class Parkur2SimNode(Node):
                     class_name=obs.get("class_name", "obstacle_buoy"),
                     east_m=float(obs["east_m"]),
                     north_m=float(obs["north_m"]),
-                    radius_m=float(obs.get("radius_m", 0.7)),
+                    radius_m=float(obs.get("radius_m", 0.15)),
                     hue_deg=float(obs.get("hue_deg", 62.0)),
                     color=obs.get("color", "#ffe15a"),
                 )
@@ -561,6 +573,13 @@ class Parkur2SimNode(Node):
         left = dn * math.sin(heading) - de * math.cos(heading)
         return forward, left
 
+    def _footprint_clearance(self, forward: float, left: float, radius: float) -> float:
+        dx = abs(forward) - self.vehicle_half_length_m
+        dy = abs(left) - self.vehicle_half_width_m
+        outside = math.hypot(max(dx, 0.0), max(dy, 0.0))
+        inside = min(max(dx, dy), 0.0)
+        return outside + inside - radius
+
     def _ray_hit_distance(
         self,
         angle_rad: float,
@@ -683,15 +702,16 @@ class Parkur2SimNode(Node):
     def publish_world(self) -> None:
         objects = []
         closest_clearance = None
+        closest_center_clearance = None
         closest_id = None
         for obj in self.objects:
             lat, lon = self._lat_lon(obj.east_m, obj.north_m)
-            clearance = (
-                math.hypot(obj.east_m - self.east_m, obj.north_m - self.north_m)
-                - obj.radius_m
-            )
+            forward, left = self._object_in_boat_frame(obj)
+            center_clearance = math.hypot(forward, left) - obj.radius_m
+            clearance = self._footprint_clearance(forward, left, obj.radius_m)
             if closest_clearance is None or clearance < closest_clearance:
                 closest_clearance = clearance
+                closest_center_clearance = center_clearance
                 closest_id = obj.object_id
             objects.append(
                 {
@@ -738,8 +758,11 @@ class Parkur2SimNode(Node):
                             "east_m": self.east_m,
                             "north_m": self.north_m,
                             "heading_deg": self.heading_deg,
+                            "vehicle_width_m": self.vehicle_width_m,
+                            "vehicle_length_m": self.vehicle_length_m,
                             "closest_object_id": closest_id,
                             "closest_clearance_m": closest_clearance,
+                            "closest_center_clearance_m": closest_center_clearance,
                             "collision": closest_clearance is not None
                             and closest_clearance <= 0.0,
                         },

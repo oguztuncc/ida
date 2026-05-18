@@ -44,7 +44,7 @@ class RcKillNode(Node):
         )
 
         if RCIn is None:
-            self.get_logger().warn(
+            self.get_logger().warning(
                 "mavros_msgs/RCIn is unavailable; RC kill input is inactive"
             )
         else:

@@ -74,7 +74,7 @@ class GeofenceMonitorNode(Node):
                 self.has_explicit_polygon = True
                 return
             except Exception as exc:
-                self.get_logger().warn(f"Ignoring invalid geofence polygon: {exc}")
+                self.get_logger().warning(f"Ignoring invalid geofence polygon: {exc}")
 
         if not self.mission_file:
             return
@@ -90,7 +90,7 @@ class GeofenceMonitorNode(Node):
                     self.has_explicit_polygon = True
                     return
         except Exception as exc:
-            self.get_logger().warn(f"Geofence mission load failed: {exc}")
+            self.get_logger().warning(f"Geofence mission load failed: {exc}")
 
     def _parse_polygon(self, items) -> list[tuple[float, float]]:
         polygon = []
@@ -171,7 +171,7 @@ class GeofenceMonitorNode(Node):
                 self.polygon_xy = []
                 self._refresh_polygon_xy()
         except Exception as exc:
-            self.get_logger().warn(f"Ignoring invalid waypoint geofence input: {exc}")
+            self.get_logger().warning(f"Ignoring invalid waypoint geofence input: {exc}")
 
     def _point_in_polygon(self, x: float, y: float) -> bool:
         inside = False

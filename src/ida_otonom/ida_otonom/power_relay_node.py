@@ -73,7 +73,7 @@ class PowerRelayNode(Node):
 
     def motor_power_cb(self, msg: Bool) -> None:
         if msg.data:
-            self.get_logger().warn(
+            self.get_logger().warning(
                 "Motor power enable requested. Verify physical kill chain "
                 "before enabling this topic in real tests."
             )
