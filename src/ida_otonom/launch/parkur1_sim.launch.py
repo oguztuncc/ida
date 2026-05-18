@@ -1,6 +1,7 @@
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument
+from launch.actions import DeclareLaunchArgument, RegisterEventHandler, Shutdown
 from launch.conditions import IfCondition, UnlessCondition
+from launch.event_handlers import OnProcessExit
 from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
 from launch_ros.actions import Node
 from launch_ros.parameter_descriptions import ParameterValue
@@ -35,6 +36,24 @@ def generate_launch_description():
     common_mission_params = {
         "mission_file": ParameterValue(mission_file, value_type=str)
     }
+    sim_node = Node(
+        package="ida_otonom",
+        executable="parkur2_sim_node",
+        name="parkur2_sim_node",
+        output="screen",
+        condition=IfCondition(enable_corridor_planning),
+        parameters=[
+            config_file,
+            {
+                "world_variant": "custom",
+                "custom_world_path": ParameterValue(
+                    mission_file,
+                    value_type=str,
+                ),
+                "detection_topic": "/perception/buoy_detections_raw",
+            },
+        ],
+    )
 
     return LaunchDescription(
         [
@@ -119,23 +138,14 @@ def generate_launch_description():
                 condition=UnlessCondition(enable_corridor_planning),
                 parameters=[{"cmd_vel_topic": "/control/cmd_vel_safe"}],
             ),
-            Node(
-                package="ida_otonom",
-                executable="parkur2_sim_node",
-                name="parkur2_sim_node",
-                output="screen",
-                condition=IfCondition(enable_corridor_planning),
-                parameters=[
-                    config_file,
-                    {
-                        "world_variant": "custom",
-                        "custom_world_path": ParameterValue(
-                            mission_file,
-                            value_type=str,
-                        ),
-                        "detection_topic": "/perception/buoy_detections_raw",
-                    },
-                ],
+            sim_node,
+            RegisterEventHandler(
+                OnProcessExit(
+                    target_action=sim_node,
+                    on_exit=[
+                        Shutdown(reason="simulation node exited"),
+                    ],
+                )
             ),
             Node(
                 package="ida_otonom",

@@ -1,6 +1,7 @@
 import json
 import math
 import os
+import fcntl
 from dataclasses import dataclass
 
 import rclpy
@@ -52,6 +53,10 @@ class Parkur2SimNode(Node):
         self.declare_parameter("course_jitter_m", 0.0)
         self.declare_parameter("include_obstacles", True)
         self.declare_parameter("custom_world_path", "")
+        self.declare_parameter("enforce_single_instance", True)
+
+        self._single_instance_lock_file = None
+        self._acquire_single_instance_lock()
 
         self.origin_lat = float(self.get_parameter("initial_lat").value)
         self.origin_lon = float(self.get_parameter("initial_lon").value)
@@ -168,6 +173,28 @@ class Parkur2SimNode(Node):
             f"{self.world_variant} sim world loaded with "
             f"{len(self.objects)} object(s), time_scale={self.time_scale:.1f}x"
         )
+
+    def _acquire_single_instance_lock(self) -> None:
+        if not bool(self.get_parameter("enforce_single_instance").value):
+            return
+        domain_id = os.environ.get("ROS_DOMAIN_ID", "default")
+        lock_path = f"/tmp/ida_otonom_sim_{domain_id}.lock"
+        lock_file = open(lock_path, "w", encoding="utf-8")
+        try:
+            fcntl.flock(lock_file, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError as exc:
+            lock_file.close()
+            self.get_logger().error(
+                "Another ida_otonom simulation is already running in this "
+                f"ROS_DOMAIN_ID ({domain_id}). Stop the old launch before "
+                "starting a new one."
+            )
+            raise RuntimeError("duplicate ida_otonom simulation") from exc
+        lock_file.seek(0)
+        lock_file.truncate()
+        lock_file.write(str(os.getpid()))
+        lock_file.flush()
+        self._single_instance_lock_file = lock_file
 
     def _missions_dir(self) -> str:
         return os.path.join(str(package_share_path()), "missions")
@@ -775,7 +802,14 @@ class Parkur2SimNode(Node):
 
 def main(args=None) -> None:
     rclpy.init(args=args)
-    node = Parkur2SimNode()
-    rclpy.spin(node)
-    node.destroy_node()
-    rclpy.shutdown()
+    node = None
+    try:
+        node = Parkur2SimNode()
+        rclpy.spin(node)
+    except RuntimeError as exc:
+        if str(exc) != "duplicate ida_otonom simulation":
+            raise
+    finally:
+        if node is not None:
+            node.destroy_node()
+        rclpy.shutdown()
