@@ -47,9 +47,9 @@ class Parkur2SimNode(Node):
         self.declare_parameter("detection_fov_deg", 110.0)
         self.declare_parameter("detection_topic", "/perception/buoy_detections")
         self.declare_parameter("world_variant", "parkur2")
-        self.declare_parameter("course_width_m", 8.42)
-        self.declare_parameter("vehicle_width_m", 1.50)
-        self.declare_parameter("vehicle_length_m", 2.00)
+        self.declare_parameter("course_width_m", 8.12)
+        self.declare_parameter("vehicle_width_m", 0.76)
+        self.declare_parameter("vehicle_length_m", 1.11)
         self.declare_parameter("course_jitter_m", 0.0)
         self.declare_parameter("include_obstacles", True)
         self.declare_parameter("custom_world_path", "")
@@ -353,7 +353,7 @@ class Parkur2SimNode(Node):
                         class_name="course_buoy",
                         east_m=east,
                         north_m=north,
-                        radius_m=0.35,
+                        radius_m=0.15,
                         hue_deg=28.0,
                         color="#ff8b2e",
                     )
@@ -471,7 +471,7 @@ class Parkur2SimNode(Node):
                         "obstacle_buoy",
                         9.4,
                         8.4,
-                        0.70,
+                        0.15,
                         62.0,
                         "#ffe15a",
                     ),
@@ -481,7 +481,7 @@ class Parkur2SimNode(Node):
                         "obstacle_buoy",
                         32.0,
                         29.3,
-                        0.65,
+                        0.15,
                         62.0,
                         "#ffe15a",
                     ),
@@ -491,7 +491,7 @@ class Parkur2SimNode(Node):
                         "obstacle_buoy",
                         44.6,
                         37.0,
-                        0.70,
+                        0.15,
                         62.0,
                         "#ffe15a",
                     ),
@@ -536,7 +536,7 @@ class Parkur2SimNode(Node):
                     class_name=f"{buoy['color']}_buoy",
                     east_m=buoy["east"],
                     north_m=buoy["north"],
-                    radius_m=0.40,
+                    radius_m=0.15,
                     hue_deg=buoy["hue"],
                     color=buoy["hex"],
                 )

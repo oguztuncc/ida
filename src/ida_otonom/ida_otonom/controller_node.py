@@ -280,8 +280,14 @@ class ControllerNode(Node):
         else:
             linear_speed = 0.05
 
+        # Dinamik kazanç: büyük heading error'da daha agresif dönüş
+        effective_kp = self.kp_heading
+        if fabs(heading_error) > 45.0:
+            effective_kp = self.kp_heading * 2.0
+        elif fabs(heading_error) > 20.0:
+            effective_kp = self.kp_heading * 1.5
         angular_speed = clamp(
-            heading_error * self.kp_heading,
+            heading_error * effective_kp,
             -self.max_angular_speed,
             self.max_angular_speed,
         )

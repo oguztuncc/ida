@@ -491,7 +491,7 @@ class SimVisualizerNode(Node):
                 continue
             east, north = self._project(float(obj["lat"]), float(obj["lon"]))
             x, y = to_screen(east, north)
-            radius_m = float(obj.get("radius_m", 0.4))
+            radius_m = float(obj.get("radius_m", 0.15))
             rx, _ = to_screen(east + radius_m, north)
             radius_px = max(5.0, abs(rx - x))
             kind = str(obj.get("kind", ""))

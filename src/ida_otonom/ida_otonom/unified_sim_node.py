@@ -44,7 +44,7 @@ class UnifiedSimNode(Node):
         self.declare_parameter("detection_fov_deg", 120.0)
         self.declare_parameter("detection_topic", "/perception/buoy_detections")
         self.declare_parameter("world_variant", "unified")
-        self.declare_parameter("course_width_m", 8.82)
+        self.declare_parameter("course_width_m", 8.12)
         self.declare_parameter("course_jitter_m", 0.45)
         self.declare_parameter("include_obstacles", True)
 
@@ -187,7 +187,7 @@ class UnifiedSimNode(Node):
                 class_name="target_buoy",
                 east_m=101.0,
                 north_m=111.0,
-                radius_m=0.50,
+                radius_m=0.15,
                 hue_deg=120.0,
                 color="#00ff00",
             )
@@ -237,7 +237,7 @@ class UnifiedSimNode(Node):
                         class_name="course_buoy",
                         east_m=east,
                         north_m=north,
-                        radius_m=0.35,
+                        radius_m=0.15,
                         hue_deg=28.0,
                         color="#ff8b2e",
                     )
@@ -253,7 +253,7 @@ class UnifiedSimNode(Node):
                     "obstacle_buoy",
                     parkur2_start_east + 9.4,
                     parkur2_start_north + 8.4,
-                    0.70,
+                    0.15,
                     62.0,
                     "#ffe15a",
                 ),
@@ -263,7 +263,7 @@ class UnifiedSimNode(Node):
                     "obstacle_buoy",
                     parkur2_start_east + 32.0,
                     parkur2_start_north + 29.3,
-                    0.65,
+                    0.15,
                     62.0,
                     "#ffe15a",
                 ),
@@ -273,7 +273,7 @@ class UnifiedSimNode(Node):
                     "obstacle_buoy",
                     parkur2_start_east + 44.6,
                     parkur2_start_north + 37.0,
-                    0.70,
+                    0.15,
                     62.0,
                     "#ffe15a",
                 ),
@@ -331,7 +331,7 @@ class UnifiedSimNode(Node):
                             class_name="course_buoy",
                             east_m=east,
                             north_m=north,
-                            radius_m=0.35,
+                            radius_m=0.15,
                             hue_deg=28.0,
                             color="#ff8b2e",
                         )

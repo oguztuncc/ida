@@ -8,7 +8,9 @@ from launch_ros.substitutions import FindPackageShare
 
 
 def generate_launch_description():
-    config_file = LaunchConfiguration("config_file")
+    config_path = PathJoinSubstitution(
+        [FindPackageShare("ida_otonom"), "config", "ida_sim.yaml"]
+    )
     mission_file = LaunchConfiguration("mission_file")
     arrival_radius_m = LaunchConfiguration("arrival_radius_m")
     log_dir = LaunchConfiguration("log_dir")
@@ -19,9 +21,6 @@ def generate_launch_description():
     yki_udp_ip = LaunchConfiguration("yki_udp_ip")
     yki_udp_port = LaunchConfiguration("yki_udp_port")
 
-    default_config = PathJoinSubstitution(
-        [FindPackageShare("ida_otonom"), "config", "parkur1_sim.yaml"]
-    )
     default_mission = PathJoinSubstitution(
         [FindPackageShare("ida_otonom"), "missions", "parkur1_zikzak.json"]
     )
@@ -32,11 +31,6 @@ def generate_launch_description():
 
     return LaunchDescription(
         [
-            DeclareLaunchArgument(
-                "config_file",
-                default_value=default_config,
-                description="Generic parkur simulation configuration YAML.",
-            ),
             DeclareLaunchArgument(
                 "mission_file",
                 default_value=default_mission,
@@ -90,7 +84,7 @@ def generate_launch_description():
                 name="parkur2_sim_node",
                 output="screen",
                 parameters=[
-                    config_file,
+                    config_path,
                     {
                         "world_variant": "custom",
                         "custom_world_path": ParameterValue(
@@ -106,7 +100,7 @@ def generate_launch_description():
                 name="mission_manager_node",
                 output="screen",
                 parameters=[
-                    config_file,
+                    config_path,
                     common_mission_params,
                     {"auto_start": True},
                 ],
@@ -117,7 +111,7 @@ def generate_launch_description():
                 name="gps_guidance_node",
                 output="screen",
                 parameters=[
-                    config_file,
+                    config_path,
                     common_mission_params,
                     {
                         "arrival_radius_m": ParameterValue(
@@ -132,56 +126,56 @@ def generate_launch_description():
                 executable="controller_node",
                 name="controller_node",
                 output="screen",
-                parameters=[config_file],
+                parameters=[config_path],
             ),
             Node(
                 package="ida_otonom",
                 executable="lidar_processor_node",
                 name="lidar_processor_node",
                 output="screen",
-                parameters=[config_file],
+                parameters=[config_path],
             ),
             Node(
                 package="ida_otonom",
                 executable="sensor_cross_validator_node",
                 name="sensor_cross_validator_node",
                 output="screen",
-                parameters=[config_file],
+                parameters=[config_path],
             ),
             Node(
                 package="ida_otonom",
                 executable="course_memory_node",
                 name="course_memory_node",
                 output="screen",
-                parameters=[config_file],
+                parameters=[config_path],
             ),
             Node(
                 package="ida_otonom",
                 executable="semantic_buoy_classifier_node",
                 name="semantic_buoy_classifier_node",
                 output="screen",
-                parameters=[config_file],
+                parameters=[config_path],
             ),
             Node(
                 package="ida_otonom",
                 executable="corridor_tracker_node",
                 name="corridor_tracker_node",
                 output="screen",
-                parameters=[config_file],
+                parameters=[config_path],
             ),
             Node(
                 package="ida_otonom",
                 executable="parkur2_planner_node",
                 name="parkur2_planner_node",
                 output="screen",
-                parameters=[config_file],
+                parameters=[config_path],
             ),
             Node(
                 package="ida_otonom",
                 executable="safety_node",
                 name="safety_node",
                 output="screen",
-                parameters=[config_file],
+                parameters=[config_path],
             ),
             Node(
                 package="ida_otonom",
@@ -190,7 +184,7 @@ def generate_launch_description():
                 output="screen",
                 condition=IfCondition(enable_logger),
                 parameters=[
-                    config_file,
+                    config_path,
                     {"log_dir": ParameterValue(log_dir, value_type=str)},
                 ],
             ),
@@ -200,7 +194,7 @@ def generate_launch_description():
                 name="sim_visualizer_node",
                 output="screen",
                 condition=IfCondition(enable_visualizer),
-                parameters=[config_file],
+                parameters=[config_path],
             ),
             Node(
                 package="ida_otonom",
@@ -209,7 +203,7 @@ def generate_launch_description():
                 output="screen",
                 condition=IfCondition(enable_costmap_logger),
                 parameters=[
-                    config_file,
+                    config_path,
                     {"log_dir": ParameterValue(log_dir, value_type=str)},
                 ],
             ),

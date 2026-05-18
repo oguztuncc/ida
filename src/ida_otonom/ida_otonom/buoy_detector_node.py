@@ -74,6 +74,7 @@ class BuoyDetectorNode(Node):
         self.bridge = CvBridge() if CvBridge is not None else None
         self.model = self._load_model()
         self.latest_depth = None
+        self.latest_depth_encoding = ""
         self.fx = None
         self.cx = None
         self.video_writer = None
@@ -140,6 +141,7 @@ class BuoyDetectorNode(Node):
                 msg,
                 desired_encoding="passthrough",
             )
+            self.latest_depth_encoding = msg.encoding
         except Exception as exc:
             self.get_logger().warning(f"Depth conversion failed: {exc}")
 
@@ -160,8 +162,17 @@ class BuoyDetectorNode(Node):
         if vals.size == 0:
             return None
         median = float(np.median(vals))
-        if median > 50.0:
-            median /= 1000.0
+        # Güvenilir derinlik dönüşümü: encoding'e göre karar ver
+        if self.latest_depth_encoding in ("16UC1", "mono16"):
+            # uint16 millimetre (RealSense varsayılan)
+            median = median / 1000.0
+        elif self.latest_depth_encoding == "32FC1":
+            # float metre
+            pass
+        else:
+            # Bilinmeyen encoding: değer 100'den büyükse muhtemelen mm'dir
+            if median > 100.0:
+                median = median / 1000.0
         return median
 
     def _bearing_for_pixel(self, cx_px: float, image_width: int) -> float:

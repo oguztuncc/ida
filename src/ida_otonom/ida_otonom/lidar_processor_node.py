@@ -21,9 +21,10 @@ class LidarProcessorNode(Node):
         self.declare_parameter("candidate_sector_width_deg", 18.0)
         self.declare_parameter("avoidance_release_distance_m", 5.0)
         self.declare_parameter("latch_avoidance_direction", True)
+        self.declare_parameter("latch_override_ratio", 1.5)
         self.declare_parameter("front_path_half_width_m", 0.70)
-        self.declare_parameter("vehicle_width_m", 1.50)
-        self.declare_parameter("vehicle_length_m", 2.00)
+        self.declare_parameter("vehicle_width_m", 0.76)
+        self.declare_parameter("vehicle_length_m", 1.11)
 
         self.collision_distance_m = float(
             self.get_parameter("collision_distance_m").value
@@ -49,6 +50,10 @@ class LidarProcessorNode(Node):
         )
         self.latch_avoidance_direction = bool(
             self.get_parameter("latch_avoidance_direction").value
+        )
+        self.latch_override_ratio = max(
+            1.0,
+            float(self.get_parameter("latch_override_ratio").value),
         )
         self.front_path_half_width_m = max(
             0.1,
@@ -173,6 +178,12 @@ class LidarProcessorNode(Node):
         steps = int(
             round(2.0 * self.max_avoidance_angle_deg / self.candidate_step_deg)
         )
+
+        # Latch aktifse: önce latch yönündeki en iyiyi bul,
+        # sonra global en iyiyi bul ve karşılaştır.
+        latched_best_score = None
+        latched_best_clearance = best_clearance
+
         for step in range(steps + 1):
             angle = -self.max_avoidance_angle_deg + step * self.candidate_step_deg
             if front_blocked and abs(angle) < self.min_avoidance_angle_deg:
@@ -187,10 +198,28 @@ class LidarProcessorNode(Node):
             escape_bonus = 0.35 if angle * preferred_sign > 0.0 else 0.0
             score = clearance_score - turn_penalty + continuity_bonus + escape_bonus
 
+            if latched_best_score is None or score > latched_best_score:
+                latched_best_score = score
+                latched_best_clearance = clearance
+
             if best_score is None or score > best_score:
                 best_score = score
                 best_angle = angle
                 best_clearance = clearance
+
+        # Latch override kontrolü: eğer karşı yön çok daha iyiyse latch'i kır
+        if (
+            front_blocked
+            and self.latch_avoidance_direction
+            and self.avoidance_sign != 0.0
+            and best_score is not None
+            and latched_best_score is not None
+            and best_angle * self.avoidance_sign < 0.0
+            and best_score > latched_best_score * self.latch_override_ratio
+        ):
+            self.avoidance_sign = -self.avoidance_sign
+            best_angle = best_angle
+            best_clearance = best_clearance
 
         self.last_best_angle_deg = best_angle
         return best_angle, best_clearance

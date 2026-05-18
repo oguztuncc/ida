@@ -230,7 +230,7 @@ class ParkurEditorNode(Node):
                         "class_name": "course_buoy",
                         "east_m": round(east, 2),
                         "north_m": round(north, 2),
-                        "radius_m": 0.35,
+                        "radius_m": 0.15,
                         "hue_deg": 28.0,
                         "color": "#ff8b2e",
                     }
@@ -278,7 +278,7 @@ class ParkurEditorNode(Node):
                             "class_name": "course_buoy",
                             "east_m": round(east, 2),
                             "north_m": round(north, 2),
-                            "radius_m": 0.35,
+                            "radius_m": 0.15,
                             "hue_deg": 28.0,
                             "color": "#ff8b2e",
                         }
@@ -519,7 +519,7 @@ class ParkurEditorNode(Node):
                     "class_name": "obstacle_buoy",
                     "east_m": round(east_m, 2),
                     "north_m": round(north_m, 2),
-                    "radius_m": 0.70,
+                    "radius_m": 0.15,
                     "hue_deg": 62.0,
                     "color": "#ffe15a",
                 }
@@ -692,7 +692,7 @@ class ParkurEditorNode(Node):
     def _draw_boundaries(self) -> None:
         for idx, b in enumerate(self.boundaries):
             x, y = self._to_screen(b["east_m"], b["north_m"])
-            r = max(6.0, b.get("radius_m", 0.35) * self.zoom)
+            r = max(6.0, b.get("radius_m", 0.15) * self.zoom)
             fill = b.get("color", "#ff8b2e")
             outline = "#ffffff" if self.selected_item == ("boundary", idx) else "#ff8b2e"
             width = 3 if self.selected_item == ("boundary", idx) else 2
@@ -708,7 +708,7 @@ class ParkurEditorNode(Node):
     def _draw_obstacles(self) -> None:
         for idx, o in enumerate(self.obstacles):
             x, y = self._to_screen(o["east_m"], o["north_m"])
-            r = max(6.0, o.get("radius_m", 0.7) * self.zoom)
+            r = max(6.0, o.get("radius_m", 0.15) * self.zoom)
             fill = o.get("color", "#ffe15a")
             outline = "#ffffff" if self.selected_item == ("obstacle", idx) else "#ffe15a"
             width = 3 if self.selected_item == ("obstacle", idx) else 2
