@@ -27,7 +27,6 @@ class Parkur2PlannerNode(Node):
         self.declare_parameter("max_return_bearing_deg", 18.0)
         self.declare_parameter("corridor_min_confidence", 0.45)
         self.declare_parameter("corridor_keepout_margin_m", 1.20)
-        self.declare_parameter("pass_corridor_keepout_margin_m", 0.0)
         self.declare_parameter("obstacle_pass_margin_m", 1.20)
         self.declare_parameter("min_pass_gap_width_m", 1.20)
         self.declare_parameter("path_block_margin_m", 0.0)
@@ -104,9 +103,6 @@ class Parkur2PlannerNode(Node):
         )
         self.corridor_keepout_margin_m = float(
             self.get_parameter("corridor_keepout_margin_m").value
-        )
-        self.pass_corridor_keepout_margin_m = float(
-            self.get_parameter("pass_corridor_keepout_margin_m").value
         )
         self.obstacle_pass_margin_m = float(
             self.get_parameter("obstacle_pass_margin_m").value
@@ -385,11 +381,7 @@ class Parkur2PlannerNode(Node):
 
         return None
 
-    def _corridor_bounds(
-        self,
-        corridor,
-        for_pass: bool = False,
-    ) -> tuple[float, float] | None:
+    def _corridor_bounds(self, corridor) -> tuple[float, float] | None:
         if corridor is None:
             return None
         width = float(corridor["width_m"])
@@ -397,10 +389,7 @@ class Parkur2PlannerNode(Node):
             return None
         center = float(corridor["center_left_m"])
         half = width / 2.0
-        keepout_margin = self.corridor_keepout_margin_m
-        if for_pass and self.pass_corridor_keepout_margin_m > 0.0:
-            keepout_margin = self.pass_corridor_keepout_margin_m
-        margin = max(keepout_margin, self.safe_clearance_m / 2.0)
+        margin = max(self.corridor_keepout_margin_m, self.safe_clearance_m / 2.0)
         min_left = center - half + margin
         max_left = center + half - margin
         if min_left >= max_left:
@@ -480,7 +469,7 @@ class Parkur2PlannerNode(Node):
         }
         if obstacle is None:
             return result
-        bounds = self._corridor_bounds(corridor, for_pass=True)
+        bounds = self._corridor_bounds(corridor)
         if bounds is None:
             return result
 
@@ -664,7 +653,7 @@ class Parkur2PlannerNode(Node):
                 right_score += abs(best_free)
 
         if obstacle is not None:
-            bounds = self._corridor_bounds(corridor, for_pass=True)
+            bounds = self._corridor_bounds(corridor)
             obstacle_left = float(obstacle["left_m"])
             margin = max(self.obstacle_pass_margin_m, self.safe_clearance_m / 2.0)
             if bounds is not None:
@@ -741,7 +730,7 @@ class Parkur2PlannerNode(Node):
             self.pass_side = float(best["side"])
             return float(best["target_left_m"])
 
-        bounds = self._corridor_bounds(corridor, for_pass=True)
+        bounds = self._corridor_bounds(corridor)
         if bounds is not None:
             return clamp(float(corridor["center_left_m"]), bounds[0], bounds[1])
         return 0.0
@@ -770,9 +759,8 @@ class Parkur2PlannerNode(Node):
         body_bearing_deg: float,
         corridor,
         lookahead_m: float,
-        for_pass: bool = False,
     ) -> float:
-        bounds = self._corridor_bounds(corridor, for_pass=for_pass)
+        bounds = self._corridor_bounds(corridor)
         if bounds is None:
             return body_bearing_deg
 
@@ -886,9 +874,6 @@ class Parkur2PlannerNode(Node):
                         if selected_gap is None
                         else selected_gap.get("target_left_m"),
                         "min_pass_gap_width_m": self.min_pass_gap_width_m,
-                        "pass_corridor_keepout_margin_m": (
-                            self.pass_corridor_keepout_margin_m
-                        ),
                         "scan_elapsed_s": max(0.0, timestamp - self.scan_started_ts)
                         if mode == "SCAN_BEFORE_PASS"
                         else None,
@@ -1129,7 +1114,6 @@ class Parkur2PlannerNode(Node):
                         escape_body_bearing,
                         pass_corridor,
                         self._pass_lookahead_for_obstacle(obstacle),
-                        for_pass=True,
                     )
                     if abs(escape_body_bearing) > 1.0:
                         body_bearing = escape_body_bearing
