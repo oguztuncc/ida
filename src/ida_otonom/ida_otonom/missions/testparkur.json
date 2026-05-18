@@ -32,7 +32,7 @@
       "class_name": "course_buoy",
       "east_m": 26.12,
       "north_m": 55.75,
-      "radius_m": 0.35,
+      "radius_m": 0.15,
       "hue_deg": 28.0,
       "color": "#ff8b2e"
     },
@@ -42,7 +42,7 @@
       "class_name": "course_buoy",
       "east_m": 24.75,
       "north_m": 21.0,
-      "radius_m": 0.35,
+      "radius_m": 0.15,
       "hue_deg": 28.0,
       "color": "#ff8b2e"
     },
@@ -52,7 +52,7 @@
       "class_name": "course_buoy",
       "east_m": 50.62,
       "north_m": 57.38,
-      "radius_m": 0.35,
+      "radius_m": 0.15,
       "hue_deg": 28.0,
       "color": "#ff8b2e"
     },
@@ -62,7 +62,7 @@
       "class_name": "course_buoy",
       "east_m": 47.0,
       "north_m": 22.25,
-      "radius_m": 0.35,
+      "radius_m": 0.15,
       "hue_deg": 28.0,
       "color": "#ff8b2e"
     },
@@ -72,7 +72,7 @@
       "class_name": "course_buoy",
       "east_m": 73.38,
       "north_m": 21.12,
-      "radius_m": 0.35,
+      "radius_m": 0.15,
       "hue_deg": 28.0,
       "color": "#ff8b2e"
     },
@@ -82,7 +82,7 @@
       "class_name": "course_buoy",
       "east_m": 70.75,
       "north_m": 59.75,
-      "radius_m": 0.35,
+      "radius_m": 0.15,
       "hue_deg": 28.0,
       "color": "#ff8b2e"
     },
@@ -92,7 +92,7 @@
       "class_name": "course_buoy",
       "east_m": 94.5,
       "north_m": 22.25,
-      "radius_m": 0.35,
+      "radius_m": 0.15,
       "hue_deg": 28.0,
       "color": "#ff8b2e"
     },
@@ -102,7 +102,7 @@
       "class_name": "course_buoy",
       "east_m": 88.62,
       "north_m": 61.25,
-      "radius_m": 0.35,
+      "radius_m": 0.15,
       "hue_deg": 28.0,
       "color": "#ff8b2e"
     }

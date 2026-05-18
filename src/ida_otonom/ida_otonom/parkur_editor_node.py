@@ -12,6 +12,9 @@ from std_msgs.msg import String
 from .common import package_share_path
 
 
+BUOY_RADIUS_M = 0.15
+
+
 class ParkurEditorNode(Node):
     def __init__(self) -> None:
         super().__init__("parkur_editor_node")
@@ -47,12 +50,17 @@ class ParkurEditorNode(Node):
         self.waypoints: list[tuple[float, float]] = []
         self.boundaries: list[dict] = []
         self.obstacles: list[dict] = []
+        self.measure_points: list[tuple[float, float]] = []
+        self.spawn: dict | None = None
         self.selected_item = None
 
         self.world_pub = self.create_publisher(String, "/sim/editor_world", 10)
 
         self.root = tk.Tk()
         self.root.title("IDA Parkur Editor")
+        self.auto_pair_var = tk.BooleanVar(value=True)
+        self.pair_distance_var = tk.StringVar(value="8.12")
+        self.spawn_heading_var = tk.StringVar(value="")
         self._build_ui()
         self._bind_events()
         self._draw()
@@ -87,6 +95,50 @@ class ParkurEditorNode(Node):
         tk.Button(
             self.toolbar, text="Obstacle", command=lambda: self._set_mode("OBSTACLE"), **btn_cfg
         ).pack(side=tk.LEFT, padx=4, pady=4)
+        tk.Button(
+            self.toolbar, text="Measure", command=lambda: self._set_mode("MEASURE"), **btn_cfg
+        ).pack(side=tk.LEFT, padx=4, pady=4)
+        tk.Button(
+            self.toolbar, text="Spawn", command=lambda: self._set_mode("SPAWN"), **btn_cfg
+        ).pack(side=tk.LEFT, padx=4, pady=4)
+
+        tk.Checkbutton(
+            self.toolbar,
+            text="Auto Pair",
+            variable=self.auto_pair_var,
+            bg="#1a2f3d",
+            fg="#ffffff",
+            selectcolor="#2a4f6d",
+            activebackground="#1a2f3d",
+            activeforeground="#ffffff",
+            font=("Sans", 10, "bold"),
+        ).pack(side=tk.LEFT, padx=(10, 2), pady=4)
+        tk.Label(
+            self.toolbar,
+            text="Pair m",
+            bg="#1a2f3d",
+            fg="#7ec8ff",
+            font=("Sans", 9, "bold"),
+        ).pack(side=tk.LEFT, padx=(4, 2))
+        tk.Entry(
+            self.toolbar,
+            width=5,
+            textvariable=self.pair_distance_var,
+            font=("Sans", 10),
+        ).pack(side=tk.LEFT, padx=(0, 8), pady=4)
+        tk.Label(
+            self.toolbar,
+            text="Spawn hdg",
+            bg="#1a2f3d",
+            fg="#7ec8ff",
+            font=("Sans", 9, "bold"),
+        ).pack(side=tk.LEFT, padx=(2, 2))
+        tk.Entry(
+            self.toolbar,
+            width=5,
+            textvariable=self.spawn_heading_var,
+            font=("Sans", 10),
+        ).pack(side=tk.LEFT, padx=(0, 8), pady=4)
 
         tk.Frame(self.toolbar, bg="#1a2f3d", width=20).pack(side=tk.LEFT)
 
@@ -167,6 +219,30 @@ class ParkurEditorNode(Node):
         self.status_label.config(text=f"Mode: {mode}")
         self._draw()
 
+    def _set_status(self, text: str) -> None:
+        self.status_label.config(text=text)
+
+    def _parse_positive_float(self, text: str, fallback: float) -> float:
+        try:
+            value = float(text)
+        except (TypeError, ValueError):
+            return fallback
+        return value if value > 0.0 else fallback
+
+    def _pair_distance_m(self) -> float:
+        return self._parse_positive_float(self.pair_distance_var.get(), 8.12)
+
+    def _spawn_heading_deg(self, update_status: bool = True) -> float | None:
+        text = self.spawn_heading_var.get().strip()
+        if not text:
+            return None
+        try:
+            return float(text) % 360.0
+        except ValueError:
+            if update_status:
+                self._set_status("Invalid spawn heading")
+            return None
+
     def _package_data_dir(self) -> str:
         local_package_dir = Path(__file__).resolve().parent
         if (local_package_dir / "missions").is_dir():
@@ -230,7 +306,7 @@ class ParkurEditorNode(Node):
                         "class_name": "course_buoy",
                         "east_m": round(east, 2),
                         "north_m": round(north, 2),
-                        "radius_m": 0.15,
+                        "radius_m": BUOY_RADIUS_M,
                         "hue_deg": 28.0,
                         "color": "#ff8b2e",
                     }
@@ -278,7 +354,7 @@ class ParkurEditorNode(Node):
                             "class_name": "course_buoy",
                             "east_m": round(east, 2),
                             "north_m": round(north, 2),
-                            "radius_m": 0.15,
+                            "radius_m": BUOY_RADIUS_M,
                             "hue_deg": 28.0,
                             "color": "#ff8b2e",
                         }
@@ -316,6 +392,65 @@ class ParkurEditorNode(Node):
             return self._gps_waypoints_to_local(points, origin)
         return [(float(p[0]), float(p[1])) for p in points]
 
+    def _parse_spawn(self, spawn, origin=None) -> dict | None:
+        if not isinstance(spawn, dict):
+            return None
+        if "east_m" in spawn and "north_m" in spawn:
+            east_m = float(spawn["east_m"])
+            north_m = float(spawn["north_m"])
+        elif "lat" in spawn and "lon" in spawn:
+            origin = origin or {}
+            origin_lat = float(origin.get("lat", self.origin_lat))
+            origin_lon = float(origin.get("lon", self.origin_lon))
+            lat_scale = 111_320.0
+            lon_scale = lat_scale * math.cos(math.radians(origin_lat))
+            east_m = (float(spawn["lon"]) - origin_lon) * lon_scale
+            north_m = (float(spawn["lat"]) - origin_lat) * lat_scale
+        else:
+            return None
+
+        parsed = {
+            "east_m": round(east_m, 2),
+            "north_m": round(north_m, 2),
+        }
+        if spawn.get("heading_deg") is not None:
+            parsed["heading_deg"] = float(spawn["heading_deg"]) % 360.0
+            self.spawn_heading_var.set(f"{parsed['heading_deg']:.1f}")
+        return parsed
+
+    def _next_boundary_id(self) -> str:
+        used_ids = {str(b.get("id", "")) for b in self.boundaries}
+        index = 0
+        while f"boundary_{index}" in used_ids:
+            index += 1
+        return f"boundary_{index}"
+
+    def _make_boundary(self, east_m: float, north_m: float) -> dict:
+        return {
+            "id": self._next_boundary_id(),
+            "kind": "course_boundary",
+            "class_name": "course_buoy",
+            "east_m": round(east_m, 2),
+            "north_m": round(north_m, 2),
+            "radius_m": BUOY_RADIUS_M,
+            "hue_deg": 28.0,
+            "color": "#ff8b2e",
+        }
+
+    def _paired_boundary_point(
+        self, east_m: float, north_m: float, radius_m: float
+    ) -> tuple[float, float]:
+        center_distance_m = self._pair_distance_m() + radius_m * 2.0
+        return east_m, north_m + center_distance_m
+
+    def _normalize_buoy_radii(self, buoys: list[dict]) -> list[dict]:
+        normalized = []
+        for buoy in buoys:
+            item = dict(buoy)
+            item["radius_m"] = BUOY_RADIUS_M
+            normalized.append(item)
+        return normalized
+
     def _local_waypoints_to_gps(self) -> list[dict]:
         lat_scale = 111_320.0
         lon_scale = lat_scale * math.cos(math.radians(self.origin_lat))
@@ -336,14 +471,20 @@ class ParkurEditorNode(Node):
             return
 
         origin = data.get("origin") or {}
+        if origin.get("lat") is not None and origin.get("lon") is not None:
+            self.origin_lat = float(origin["lat"])
+            self.origin_lon = float(origin["lon"])
         raw_route = data.get("route", [])
         raw_waypoints = data.get("local_waypoints", data.get("waypoints", []))
         self.route_points = self._parse_point_list(raw_route, origin)
         self.waypoints = self._parse_point_list(raw_waypoints, origin)
         if not self.route_points and self._is_gps_waypoint_list(raw_waypoints):
             self.route_points = list(self.waypoints)
-        self.boundaries = data.get("boundaries", [])
-        self.obstacles = data.get("obstacles", [])
+        self.boundaries = self._normalize_buoy_radii(data.get("boundaries", []))
+        self.obstacles = self._normalize_buoy_radii(data.get("obstacles", []))
+        self.spawn_heading_var.set("")
+        self.spawn = self._parse_spawn(data.get("spawn"), origin)
+        self.measure_points.clear()
 
         # Backward compatibility: old format with build_method / stations
         if "build_method" in data and not self.boundaries:
@@ -388,6 +529,15 @@ class ParkurEditorNode(Node):
             ],
             "boundaries": self.boundaries,
         }
+        if self.spawn is not None:
+            spawn = {
+                "east_m": round(float(self.spawn["east_m"]), 2),
+                "north_m": round(float(self.spawn["north_m"]), 2),
+            }
+            heading_deg = self._spawn_heading_deg()
+            if heading_deg is not None:
+                spawn["heading_deg"] = round(heading_deg, 1)
+            data["spawn"] = spawn
         if self.obstacles:
             data["obstacles"] = self.obstacles
 
@@ -411,6 +561,8 @@ class ParkurEditorNode(Node):
         self.waypoints.clear()
         self.boundaries.clear()
         self.obstacles.clear()
+        self.measure_points.clear()
+        self.spawn = None
         self.selected_item = None
         self._draw()
 
@@ -418,6 +570,8 @@ class ParkurEditorNode(Node):
         all_points = list(self.route_points) + list(self.waypoints)
         all_points += [(b["east_m"], b["north_m"]) for b in self.boundaries]
         all_points += [(o["east_m"], o["north_m"]) for o in self.obstacles]
+        if self.spawn is not None:
+            all_points.append((self.spawn["east_m"], self.spawn["north_m"]))
         if not all_points:
             self.pan_east = 0.0
             self.pan_north = 0.0
@@ -472,6 +626,10 @@ class ParkurEditorNode(Node):
             if d < best_dist:
                 best_dist = d
                 best = ("obstacle", idx)
+        if self.spawn is not None:
+            d = math.hypot(self.spawn["east_m"] - east_m, self.spawn["north_m"] - north_m)
+            if d < best_dist:
+                best = ("spawn", 0)
         return best
 
     def _on_left_press(self, event) -> None:
@@ -497,19 +655,17 @@ class ParkurEditorNode(Node):
         elif self.mode == "WAYPOINT":
             self.waypoints.append((round(east_m, 2), round(north_m, 2)))
         elif self.mode == "BOUNDARY":
-            b_id = f"boundary_{len(self.boundaries)}"
-            self.boundaries.append(
-                {
-                    "id": b_id,
-                    "kind": "course_boundary",
-                    "class_name": "course_buoy",
-                    "east_m": round(east_m, 2),
-                    "north_m": round(north_m, 2),
-                    "radius_m": 0.35,
-                    "hue_deg": 28.0,
-                    "color": "#ff8b2e",
-                }
-            )
+            boundary = self._make_boundary(east_m, north_m)
+            self.boundaries.append(boundary)
+            if self.auto_pair_var.get():
+                radius_m = float(boundary.get("radius_m", BUOY_RADIUS_M))
+                paired = self._paired_boundary_point(east_m, north_m, radius_m)
+                self.boundaries.append(self._make_boundary(*paired))
+                center_distance_m = self._pair_distance_m() + radius_m * 2.0
+                self._set_status(
+                    f"Auto Pair: {self._pair_distance_m():.2f} m surface, "
+                    f"{center_distance_m:.2f} m center"
+                )
         elif self.mode == "OBSTACLE":
             obs_id = f"obstacle_{len(self.obstacles)}"
             self.obstacles.append(
@@ -519,11 +675,29 @@ class ParkurEditorNode(Node):
                     "class_name": "obstacle_buoy",
                     "east_m": round(east_m, 2),
                     "north_m": round(north_m, 2),
-                    "radius_m": 0.15,
+                    "radius_m": BUOY_RADIUS_M,
                     "hue_deg": 62.0,
                     "color": "#ffe15a",
                 }
             )
+        elif self.mode == "MEASURE":
+            point = (round(east_m, 2), round(north_m, 2))
+            if len(self.measure_points) >= 2:
+                self.measure_points = [point]
+            else:
+                self.measure_points.append(point)
+            if len(self.measure_points) == 2:
+                start, end = self.measure_points
+                distance_m = math.hypot(end[0] - start[0], end[1] - start[1])
+                self._set_status(f"Measure: {distance_m:.2f} m")
+        elif self.mode == "SPAWN":
+            self.spawn = {
+                "east_m": round(east_m, 2),
+                "north_m": round(north_m, 2),
+            }
+            heading_deg = self._spawn_heading_deg()
+            if heading_deg is not None:
+                self.spawn["heading_deg"] = heading_deg
         self._draw()
 
     def _on_left_drag(self, event) -> None:
@@ -550,6 +724,9 @@ class ParkurEditorNode(Node):
         elif kind == "obstacle" and 0 <= idx < len(self.obstacles):
             self.obstacles[idx]["east_m"] = round(east_m, 2)
             self.obstacles[idx]["north_m"] = round(north_m, 2)
+        elif kind == "spawn" and self.spawn is not None:
+            self.spawn["east_m"] = round(east_m, 2)
+            self.spawn["north_m"] = round(north_m, 2)
         self._draw()
 
     def _on_left_release(self, _event) -> None:
@@ -557,6 +734,10 @@ class ParkurEditorNode(Node):
         self.drag_item = None
 
     def _on_right_click(self, event) -> None:
+        if self.mode == "MEASURE":
+            self.measure_points.clear()
+            self._draw()
+            return
         east_m, north_m = self._to_world(event.x, event.y)
         item = self._nearest_item(east_m, north_m)
         if not item:
@@ -570,6 +751,8 @@ class ParkurEditorNode(Node):
             del self.boundaries[idx]
         elif kind == "obstacle" and 0 <= idx < len(self.obstacles):
             del self.obstacles[idx]
+        elif kind == "spawn":
+            self.spawn = None
         self.selected_item = None
         self._draw()
 
@@ -601,6 +784,8 @@ class ParkurEditorNode(Node):
             del self.boundaries[idx]
         elif kind == "obstacle" and 0 <= idx < len(self.obstacles):
             del self.obstacles[idx]
+        elif kind == "spawn":
+            self.spawn = None
         self.selected_item = None
         self._draw()
 
@@ -611,6 +796,8 @@ class ParkurEditorNode(Node):
         self._draw_waypoints()
         self._draw_boundaries()
         self._draw_obstacles()
+        self._draw_measurement()
+        self._draw_spawn()
         self._draw_ui_overlay()
 
     def _draw_grid(self) -> None:
@@ -692,7 +879,7 @@ class ParkurEditorNode(Node):
     def _draw_boundaries(self) -> None:
         for idx, b in enumerate(self.boundaries):
             x, y = self._to_screen(b["east_m"], b["north_m"])
-            r = max(6.0, b.get("radius_m", 0.15) * self.zoom)
+            r = max(6.0, b.get("radius_m", BUOY_RADIUS_M) * self.zoom)
             fill = b.get("color", "#ff8b2e")
             outline = "#ffffff" if self.selected_item == ("boundary", idx) else "#ff8b2e"
             width = 3 if self.selected_item == ("boundary", idx) else 2
@@ -708,7 +895,7 @@ class ParkurEditorNode(Node):
     def _draw_obstacles(self) -> None:
         for idx, o in enumerate(self.obstacles):
             x, y = self._to_screen(o["east_m"], o["north_m"])
-            r = max(6.0, o.get("radius_m", 0.15) * self.zoom)
+            r = max(6.0, o.get("radius_m", BUOY_RADIUS_M) * self.zoom)
             fill = o.get("color", "#ffe15a")
             outline = "#ffffff" if self.selected_item == ("obstacle", idx) else "#ffe15a"
             width = 3 if self.selected_item == ("obstacle", idx) else 2
@@ -721,6 +908,60 @@ class ParkurEditorNode(Node):
                 fill="#ffe15a", anchor="s", font=("Sans", 8, "bold")
             )
 
+    def _draw_measurement(self) -> None:
+        if not self.measure_points:
+            return
+        x0, y0 = self._to_screen(*self.measure_points[0])
+        self.canvas.create_oval(
+            x0 - 5, y0 - 5, x0 + 5, y0 + 5,
+            fill="#ffffff", outline="#2cf0ff", width=2
+        )
+        if len(self.measure_points) < 2:
+            return
+        x1, y1 = self._to_screen(*self.measure_points[1])
+        start, end = self.measure_points
+        distance_m = math.hypot(end[0] - start[0], end[1] - start[1])
+        self.canvas.create_line(
+            x0, y0, x1, y1, fill="#2cf0ff", width=2, dash=(5, 4)
+        )
+        self.canvas.create_oval(
+            x1 - 5, y1 - 5, x1 + 5, y1 + 5,
+            fill="#ffffff", outline="#2cf0ff", width=2
+        )
+        self.canvas.create_text(
+            (x0 + x1) / 2.0,
+            (y0 + y1) / 2.0 - 10,
+            text=f"{distance_m:.2f} m",
+            fill="#2cf0ff",
+            anchor="s",
+            font=("Sans", 10, "bold"),
+        )
+
+    def _draw_spawn(self) -> None:
+        if self.spawn is None:
+            return
+        x, y = self._to_screen(self.spawn["east_m"], self.spawn["north_m"])
+        r = 10
+        fill = "#ffcf4a" if self.selected_item == ("spawn", 0) else "#ff4ad8"
+        self.canvas.create_polygon(
+            x, y - r,
+            x - r, y + r,
+            x + r, y + r,
+            fill=fill,
+            outline="#ffffff",
+            width=2,
+        )
+        heading_deg = self._spawn_heading_deg(update_status=False)
+        if heading_deg is not None:
+            heading = math.radians(heading_deg)
+            x1 = x + math.sin(heading) * 28.0
+            y1 = y - math.cos(heading) * 28.0
+            self.canvas.create_line(x, y, x1, y1, fill="#ffffff", width=2)
+        self.canvas.create_text(
+            x + 14, y - 14, text="SPAWN",
+            fill="#ff4ad8", anchor="w", font=("Sans", 9, "bold")
+        )
+
     def _draw_ui_overlay(self) -> None:
         info = [
             f"Zoom: {self.zoom:.1f}x",
@@ -728,6 +969,7 @@ class ParkurEditorNode(Node):
             f"Waypoints: {len(self.waypoints)}",
             f"Boundaries: {len(self.boundaries)}",
             f"Obstacles: {len(self.obstacles)}",
+            f"Spawn: {'set' if self.spawn else 'none'}",
         ]
         for row, text in enumerate(info):
             self.canvas.create_text(

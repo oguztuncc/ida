@@ -13,6 +13,9 @@ from std_msgs.msg import Float32, String
 from .common import clamp, package_share_path, to_json
 
 
+BUOY_RADIUS_M = 0.15
+
+
 @dataclass(frozen=True)
 class SimObject:
     object_id: str
@@ -114,14 +117,20 @@ class Parkur2SimNode(Node):
         self.custom_world_path = str(
             self.get_parameter("custom_world_path").value
         )
+        self.spawn = None
 
         self.east_m = 0.0
         self.north_m = 0.0
         self.last_cmd = Twist()
         self.objects = self._build_world()
         self.visual_markers = self._build_visual_markers()
+        if self.spawn is not None:
+            self.east_m = float(self.spawn["east_m"])
+            self.north_m = float(self.spawn["north_m"])
+            if self.spawn.get("heading_deg") is not None:
+                self.heading_deg = float(self.spawn["heading_deg"]) % 360.0
         # Parkur 3: start in the middle of the 3 buoys
-        if self.world_variant == "parkur3":
+        if self.world_variant == "parkur3" and self.spawn is None:
             self.east_m = 0.0
             self.north_m = 0.0
 
@@ -224,6 +233,7 @@ class Parkur2SimNode(Node):
             try:
                 return self._build_world_from_json(path)
             except Exception as exc:
+                self.spawn = None
                 self.get_logger().error(
                     f"Failed to load world from {path}: {exc}. Falling back to legacy build."
                 )
@@ -260,6 +270,7 @@ class Parkur2SimNode(Node):
 
         objects: list[SimObject] = []
         load_method = "explicit"
+        self.spawn = self._parse_spawn(data.get("spawn"))
 
         # New format: explicit boundaries list (no automatic generation)
         if "boundaries" in data:
@@ -271,7 +282,7 @@ class Parkur2SimNode(Node):
                         class_name=b.get("class_name", "course_buoy"),
                         east_m=float(b["east_m"]),
                         north_m=float(b["north_m"]),
-                        radius_m=float(b.get("radius_m", 0.15)),
+                        radius_m=BUOY_RADIUS_M,
                         hue_deg=float(b.get("hue_deg", 28.0)),
                         color=b.get("color", "#ff8b2e"),
                     )
@@ -316,7 +327,7 @@ class Parkur2SimNode(Node):
                     class_name=obs.get("class_name", "obstacle_buoy"),
                     east_m=float(obs["east_m"]),
                     north_m=float(obs["north_m"]),
-                    radius_m=float(obs.get("radius_m", 0.15)),
+                    radius_m=BUOY_RADIUS_M,
                     hue_deg=float(obs.get("hue_deg", 62.0)),
                     color=obs.get("color", "#ffe15a"),
                 )
@@ -326,6 +337,23 @@ class Parkur2SimNode(Node):
             f"Loaded world from {path}: {len(objects)} objects ({load_method})"
         )
         return objects
+
+    def _parse_spawn(self, spawn) -> dict | None:
+        if not isinstance(spawn, dict):
+            return None
+        if "east_m" not in spawn or "north_m" not in spawn:
+            return None
+        try:
+            parsed = {
+                "east_m": float(spawn["east_m"]),
+                "north_m": float(spawn["north_m"]),
+            }
+            if spawn.get("heading_deg") is not None:
+                parsed["heading_deg"] = float(spawn["heading_deg"]) % 360.0
+        except (TypeError, ValueError):
+            self.get_logger().warning("Ignoring invalid spawn field in world JSON")
+            return None
+        return parsed
 
     def _build_station_pairs(
         self,
@@ -353,7 +381,7 @@ class Parkur2SimNode(Node):
                         class_name="course_buoy",
                         east_m=east,
                         north_m=north,
-                        radius_m=0.15,
+                        radius_m=BUOY_RADIUS_M,
                         hue_deg=28.0,
                         color="#ff8b2e",
                     )
@@ -413,7 +441,7 @@ class Parkur2SimNode(Node):
                             class_name="course_buoy",
                             east_m=east,
                             north_m=north,
-                            radius_m=0.35,
+                            radius_m=BUOY_RADIUS_M,
                             hue_deg=28.0,
                             color="#ff8b2e",
                         )
@@ -536,7 +564,7 @@ class Parkur2SimNode(Node):
                     class_name=f"{buoy['color']}_buoy",
                     east_m=buoy["east"],
                     north_m=buoy["north"],
-                    radius_m=0.15,
+                    radius_m=BUOY_RADIUS_M,
                     hue_deg=buoy["hue"],
                     color=buoy["hex"],
                 )
