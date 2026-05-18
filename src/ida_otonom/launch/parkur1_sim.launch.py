@@ -27,7 +27,7 @@ def generate_launch_description():
         [FindPackageShare("ida_otonom"), "config", "parkur1_sim.yaml"]
     )
     default_mission = PathJoinSubstitution(
-        [FindPackageShare("ida_otonom"), "missions", "parkur1_zikzak.json"]
+        [FindPackageShare("ida_otonom"), "missions", "parkur1U2.json"]
     )
     default_parkur2_mission = PathJoinSubstitution(
         [FindPackageShare("ida_otonom"), "missions", "parkur2_sim.json"]
@@ -98,7 +98,7 @@ def generate_launch_description():
             ),
             DeclareLaunchArgument(
                 "enable_geofence",
-                default_value="true",
+                default_value="false",
                 description="Monitor GPS course boundary and recover inward.",
             ),
             DeclareLaunchArgument(

@@ -29,6 +29,7 @@ class Parkur2PlannerNode(Node):
         self.declare_parameter("corridor_keepout_margin_m", 1.20)
         self.declare_parameter("obstacle_pass_margin_m", 1.20)
         self.declare_parameter("min_pass_gap_width_m", 1.20)
+        self.declare_parameter("equal_gap_epsilon_m", 0.20)
         self.declare_parameter("path_block_margin_m", 0.0)
         self.declare_parameter("pass_lookahead_m", 6.0)
         self.declare_parameter("return_lookahead_m", 6.0)
@@ -109,6 +110,10 @@ class Parkur2PlannerNode(Node):
         )
         self.min_pass_gap_width_m = float(
             self.get_parameter("min_pass_gap_width_m").value
+        )
+        self.equal_gap_epsilon_m = max(
+            0.0,
+            float(self.get_parameter("equal_gap_epsilon_m").value),
         )
         configured_path_block_margin = float(
             self.get_parameter("path_block_margin_m").value
@@ -207,6 +212,7 @@ class Parkur2PlannerNode(Node):
         self.scan_right_score = 0.0
         self.last_relative_bearing = None
         self.last_plan_ts = 0.0
+        self.blocked_align_start_ts = 0.0
 
         self.safe_bearing_pub = self.create_publisher(
             Float32,
@@ -402,6 +408,7 @@ class Parkur2PlannerNode(Node):
         if now_ts() - self.semantic_ts > self.sensor_timeout_s:
             return None
 
+        active = None
         nearest = None
         for buoy in self.semantic.get("buoys", []):
             if buoy.get("semantic") not in ("obstacle_candidate", "unknown"):
@@ -412,14 +419,25 @@ class Parkur2PlannerNode(Node):
                 continue
             forward = float(forward)
             left = float(left)
-            if forward < -0.8 or forward > self.avoid_start_distance_m + 1.0:
+            if forward < -0.8 or forward > self.avoid_start_distance_m:
                 continue
-            if nearest is None or forward < nearest["forward_m"]:
-                nearest = {
-                    "id": buoy.get("id"),
+            buoy_id = buoy.get("id")
+            if buoy_id == self.active_obstacle_id and active is None:
+                active = {
+                    "id": buoy_id,
                     "forward_m": forward,
                     "left_m": left,
                 }
+            if nearest is None or forward < nearest["forward_m"]:
+                nearest = {
+                    "id": buoy_id,
+                    "forward_m": forward,
+                    "left_m": left,
+                }
+        # PASS_COMMITTED modunda aynı engeli takip etmeye devam et
+        # (farklı engellere atlamak salınıma yol açıyor)
+        if active is not None:
+            return active
         return nearest
 
     def _obstacle_requires_pass(self, obstacle, corridor) -> bool:
@@ -430,13 +448,16 @@ class Parkur2PlannerNode(Node):
         if forward <= -0.2 or forward > self.avoid_start_distance_m:
             return False
 
+        # Engel koridor merkezinden uzaktaysa yolu kapatmaz
         path_left = 0.0 if corridor is None else float(corridor["center_left_m"])
         if abs(left - path_left) > self.path_block_margin_m:
             return False
 
         bounds = self._corridor_bounds(corridor)
         if bounds is None:
-            return True
+            # Koridor bilgisi yoksa veya çok darsa,
+            # engel sadece aracın güvenli şeridi içindeyse yol kapatır
+            return abs(left) < (self.safe_clearance_m / 2.0)
 
         min_left, max_left = bounds
         return min_left <= left <= max_left
@@ -465,6 +486,7 @@ class Parkur2PlannerNode(Node):
             "right_width_m": None,
             "left_target_m": None,
             "right_target_m": None,
+            "safe_best": None,
             "best": None,
         }
         if obstacle is None:
@@ -514,7 +536,9 @@ class Parkur2PlannerNode(Node):
                 }
             )
         if feasible:
-            result["best"] = max(feasible, key=lambda item: item["width_m"])
+            safe_best = self._choose_gap_candidate(feasible)
+            result["safe_best"] = safe_best
+            result["best"] = safe_best
         else:
             # No fully-safe gap: if a partial gap exists (>0.2 m), favour the
             # larger side so BLOCKED_ALIGN can rotate toward it.
@@ -542,6 +566,21 @@ class Parkur2PlannerNode(Node):
                     partial, key=lambda item: item["width_m"]
                 )
         return result
+
+    def _choose_gap_candidate(self, candidates: list[dict]) -> dict | None:
+        if not candidates:
+            return None
+        widest = max(float(item["width_m"]) for item in candidates)
+        near_widest = [
+            item for item in candidates
+            if widest - float(item["width_m"]) <= self.equal_gap_epsilon_m
+        ]
+        # If gaps are effectively equal, choose the side requiring less turn.
+        # The candidates are built left-first, so a perfect tie still picks left.
+        return min(
+            near_widest,
+            key=lambda item: abs(float(item.get("target_left_m") or 0.0)),
+        )
 
     def _remember_pass_corridor(self, corridor) -> None:
         if corridor is None:
@@ -579,7 +618,7 @@ class Parkur2PlannerNode(Node):
     def _has_safe_pass_gap(self, obstacle, corridor) -> bool:
         if obstacle is None:
             return True
-        return self._pass_gap_options(obstacle, corridor).get("best") is not None
+        return self._pass_gap_options(obstacle, corridor).get("safe_best") is not None
 
     def _stop_for_no_safe_pass(
         self,
@@ -587,9 +626,11 @@ class Parkur2PlannerNode(Node):
         lidar_state: str,
         corridor,
         obstacle,
+        timestamp: float,
     ) -> None:
-        # When blocked, stop forward motion but continue rotating toward
-        # the target or corridor center so the vehicle can re-align.
+        # When blocked, slow down and continue rotating toward
+        # the corridor center so the vehicle can re-align.
+        # Do NOT come to a complete stop unless absolutely necessary.
         target_relative = self._target_relative_bearing()
 
         if corridor is not None:
@@ -600,8 +641,9 @@ class Parkur2PlannerNode(Node):
                     self.max_return_bearing_deg,
                 )
             )
+            # Koridor merkezine daha agresif odaklan (0.3 -> 0.7)
             relative = self._blend_relative_bearing(
-                corridor_relative, target_relative, 0.3
+                corridor_relative, target_relative, 0.7
             )
         else:
             relative = target_relative
@@ -612,10 +654,22 @@ class Parkur2PlannerNode(Node):
             self.max_relative_bearing_deg,
         )
 
+        # Yavaşça ilerle; koridor varsa ortalamaya çalışırken durma
+        if corridor is not None:
+            speed = min(self.approach_speed_mps * 0.35, self.max_speed_mps)
+        else:
+            speed = min(self.approach_speed_mps * 0.15, self.max_speed_mps)
+
+        # Lidar emergency durumunda hızı sıfırla
+        if lidar_state == "emergency":
+            speed = 0.0
+
+        self.mode = "BLOCKED_ALIGN"
+        self.blocked_align_start_ts = timestamp
         self._publish_plan(
             "BLOCKED_ALIGN",
             relative,
-            0.0,
+            speed,
             front_clearance,
             lidar_state,
             corridor,
@@ -723,17 +777,22 @@ class Parkur2PlannerNode(Node):
         preferred_key = "left_target_m" if self.pass_side >= 0.0 else "right_target_m"
         preferred_target = gap_options.get(preferred_key)
         if preferred_target is not None:
-            return float(preferred_target)
+            gap_center = float(preferred_target)
+        else:
+            best = gap_options.get("best")
+            if best is not None and best.get("target_left_m") is not None:
+                self.pass_side = float(best["side"])
+                gap_center = float(best["target_left_m"])
+            else:
+                bounds = self._corridor_bounds(corridor)
+                if bounds is not None:
+                    return clamp(float(corridor["center_left_m"]), bounds[0], bounds[1])
+                return 0.0
 
-        best = gap_options.get("best")
-        if best is not None and best.get("target_left_m") is not None:
-            self.pass_side = float(best["side"])
-            return float(best["target_left_m"])
-
-        bounds = self._corridor_bounds(corridor)
-        if bounds is not None:
-            return clamp(float(corridor["center_left_m"]), bounds[0], bounds[1])
-        return 0.0
+        # Geçit ortasına git ama koridor merkezine de hafifçe çek
+        # Böylece kenara yapışmak yerine geniş aralığın ortasında kalır
+        corridor_center = float(corridor["center_left_m"]) if corridor is not None else 0.0
+        return gap_center * 0.65 + corridor_center * 0.35
 
     def _body_bearing_for_left(self, target_left_m: float, lookahead_m: float) -> float:
         return math.degrees(math.atan2(target_left_m, max(lookahead_m, 0.5)))
@@ -957,6 +1016,53 @@ class Parkur2PlannerNode(Node):
             self.mode = "RETURN_TO_CENTER" if corridor is not None else "CRUISE"
             self.recovery_until_ts = 0.0
 
+        if self.mode == "BLOCKED_ALIGN":
+            blocked_age = timestamp - self.blocked_align_start_ts
+            if blocked_age < 2.0:
+                # Yavaşça ilerle, koridor merkezine doğru dön
+                if corridor is not None:
+                    corridor_relative = self._nav_relative_from_body_left(
+                        clamp(
+                            float(corridor["body_bearing_deg"]),
+                            -self.max_return_bearing_deg,
+                            self.max_return_bearing_deg,
+                        )
+                    )
+                    relative = self._blend_relative_bearing(
+                        corridor_relative, target_relative, 0.7
+                    )
+                    speed = min(self.approach_speed_mps * 0.35, self.max_speed_mps)
+                else:
+                    relative = target_relative
+                    speed = min(self.approach_speed_mps * 0.15, self.max_speed_mps)
+
+                relative = clamp(
+                    relative,
+                    -self.max_relative_bearing_deg,
+                    self.max_relative_bearing_deg,
+                )
+                if lidar_state == "emergency":
+                    speed = 0.0
+
+                self._publish_plan(
+                    "BLOCKED_ALIGN",
+                    relative,
+                    speed,
+                    front_clearance,
+                    lidar_state,
+                    corridor,
+                    obstacle,
+                    "blocked_align_retry",
+                )
+                return
+            else:
+                # 2 saniye doldu, modu sıfırla ve tekrar değerlendir
+                self.mode = (
+                    "RETURN_TO_CENTER" if corridor is not None else "CRUISE"
+                )
+                self.blocked_align_start_ts = 0.0
+                # return yok; kod devam edip aşağıdaki state'leri değerlendirecek
+
         if lidar_state in ("missing", "timeout"):
             self.mode = "EMERGENCY_STOP"
             self._publish_plan(
@@ -1072,6 +1178,7 @@ class Parkur2PlannerNode(Node):
                         lidar_state,
                         pass_corridor,
                         obstacle,
+                        timestamp,
                     )
                     return
 
@@ -1118,12 +1225,17 @@ class Parkur2PlannerNode(Node):
                     if abs(escape_body_bearing) > 1.0:
                         body_bearing = escape_body_bearing
                         reason = f"{reason}_lidar_escape"
-                relative = self._nav_relative_from_body_left(
+                gap_relative = self._nav_relative_from_body_left(
                     clamp(
                         body_bearing,
                         -self.max_pass_bearing_deg,
                         self.max_pass_bearing_deg,
                     )
+                )
+                # Engeli geçerken de GPS hedefine hafifçe çek (%25)
+                # Yoksa araç hedeften çok sapar ve ters yönde gider
+                relative = self._blend_relative_bearing(
+                    gap_relative, target_relative, 0.25
                 )
                 self._publish_plan(
                     self.mode,
@@ -1150,6 +1262,7 @@ class Parkur2PlannerNode(Node):
                         lidar_state,
                         return_corridor,
                         obstacle,
+                        timestamp,
                     )
                     return
                 if self._scan_available(timestamp):
@@ -1218,14 +1331,18 @@ class Parkur2PlannerNode(Node):
                         float(return_corridor["center_left_m"]),
                         self.return_lookahead_m,
                     )
-                    relative = self._nav_relative_from_body_left(
+                    corridor_relative = self._nav_relative_from_body_left(
                         clamp(
                             body_bearing,
                             -self.max_return_bearing_deg,
                             self.max_return_bearing_deg,
                         )
                     )
-                    if abs(float(return_corridor["center_left_m"])) < 0.35:
+                    # Koridora dönerken de GPS hedefine hafifçe çek (%25)
+                    relative = self._blend_relative_bearing(
+                        corridor_relative, target_relative, 0.25
+                    )
+                    if abs(float(return_corridor["center_left_m"])) < 1.0:
                         self.mode = "CRUISE"
                         if obstacle is None or not self._obstacle_requires_pass(
                             obstacle, return_corridor
@@ -1256,6 +1373,7 @@ class Parkur2PlannerNode(Node):
                     lidar_state,
                     corridor,
                     obstacle,
+                    timestamp,
                 )
                 return
             if self._scan_available(timestamp):
@@ -1316,7 +1434,9 @@ class Parkur2PlannerNode(Node):
                 self.last_corridor is not None
                 and now_ts() - self.last_corridor_ts <= self.corridor_coast_s + 2.0
             ):
-                relative = float(self.last_corridor.get("body_bearing_deg", 0.0))
+                relative = self._nav_relative_from_body_left(
+                    float(self.last_corridor.get("body_bearing_deg", 0.0))
+                )
             else:
                 relative = target_relative
             relative = clamp(
