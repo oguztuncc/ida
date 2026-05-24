@@ -34,4 +34,10 @@ install(DIRECTORY launch config models worlds urdf meshes
   DESTINATION share/${PROJECT_NAME}
 )
 
+install(PROGRAMS
+  scripts/cmd_vel_to_thrust.py
+  scripts/sim_nav_converter.py
+  DESTINATION lib/${PROJECT_NAME}
+)
+
 ament_package()

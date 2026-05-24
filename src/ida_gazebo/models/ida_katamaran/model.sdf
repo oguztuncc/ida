@@ -6,14 +6,14 @@
       <pose>0 0 0 0 0 0</pose>
       <inertial>
         <pose>0 0 0.15 0 0 0</pose>
-        <mass>50</mass>
+        <mass>15</mass>
         <inertia>
-          <ixx>3.5</ixx>
+          <ixx>0.79</ixx>
           <ixy>0</ixy>
           <ixz>0</ixz>
-          <iyy>6.0</iyy>
+          <iyy>1.57</iyy>
           <iyz>0</iyz>
-          <izz>8.5</izz>
+          <izz>2.30</izz>
         </inertia>
       </inertial>
 
@@ -164,9 +164,9 @@
 
     <!-- Sol itki muhafazası -->
     <link name="left_housing_link">
-      <pose>-0.50 0.30 -0.05 0 0 0</pose>
+      <pose>-0.50 0.30 0.0 0 0 0</pose>
       <inertial>
-        <mass>2</mass>
+        <mass>1</mass>
         <inertia>
           <ixx>0.002</ixx><ixy>0</ixy><ixz>0</ixz>
           <iyy>0.002</iyy><iyz>0</iyz>
@@ -196,7 +196,7 @@
 
     <!-- Sol pervane -->
     <link name="left_prop_link">
-      <pose>-0.58 0.30 -0.05 0 0 0</pose>
+      <pose>-0.58 0.30 0.0 0 0 0</pose>
       <inertial>
         <mass>0.2</mass>
         <inertia>
@@ -228,9 +228,9 @@
 
     <!-- Sağ itki muhafazası -->
     <link name="right_housing_link">
-      <pose>-0.50 -0.30 -0.05 0 0 0</pose>
+      <pose>-0.50 -0.30 0.0 0 0 0</pose>
       <inertial>
-        <mass>2</mass>
+        <mass>1</mass>
         <inertia>
           <ixx>0.002</ixx><ixy>0</ixy><ixz>0</ixz>
           <iyy>0.002</iyy><iyz>0</iyz>
@@ -260,7 +260,7 @@
 
     <!-- Sağ pervane -->
     <link name="right_prop_link">
-      <pose>-0.58 -0.30 -0.05 0 0 0</pose>
+      <pose>-0.58 -0.30 0.0 0 0 0</pose>
       <inertial>
         <mass>0.2</mass>
         <inertia>
@@ -297,19 +297,19 @@
     </joint>
 
     <joint name="left_prop_joint" type="revolute">
-      <pose>-0.58 0.30 -0.05 0 0 0</pose>
+      <pose>-0.58 0.30 0.0 0 0 0</pose>
       <parent>left_housing_link</parent>
       <child>left_prop_link</child>
       <axis>
         <xyz>1 0 0</xyz>
         <limit>
-          <lower>-1e6</lower>
-          <upper>1e6</upper>
-          <effort>1000</effort>
+          <lower>-100</lower>
+          <upper>100</upper>
+          <effort>100</effort>
         </limit>
         <dynamics>
-          <friction>0.001</friction>
-          <damping>0.001</damping>
+          <friction>1.0</friction>
+          <damping>5.0</damping>
         </dynamics>
       </axis>
     </joint>
@@ -320,19 +320,19 @@
     </joint>
 
     <joint name="right_prop_joint" type="revolute">
-      <pose>-0.58 -0.30 -0.05 0 0 0</pose>
+      <pose>-0.58 -0.30 0.0 0 0 0</pose>
       <parent>right_housing_link</parent>
       <child>right_prop_link</child>
       <axis>
-        <xyz>1 0 0</xyz>
+        <xyz>-1 0 0</xyz>
         <limit>
-          <lower>-1e6</lower>
-          <upper>1e6</upper>
-          <effort>1000</effort>
+          <lower>-100</lower>
+          <upper>100</upper>
+          <effort>100</effort>
         </limit>
         <dynamics>
-          <friction>0.001</friction>
-          <damping>0.001</damping>
+          <friction>1.0</friction>
+          <damping>5.0</damping>
         </dynamics>
       </axis>
     </joint>
@@ -344,8 +344,8 @@
       <hull_radius>0.09</hull_radius>
       <fluid_level>0</fluid_level>
       <points>
-        <point>0.55 0.30 0.10</point>
-        <point>-0.55 0.30 0.10</point>
+        <point>0.55 0.30 0.0</point>
+        <point>-0.55 0.30 0.0</point>
       </points>
       <wavefield>
         <topic>/vrx/wavefield/parameters</topic>
@@ -359,8 +359,8 @@
       <hull_radius>0.09</hull_radius>
       <fluid_level>0</fluid_level>
       <points>
-        <point>0.55 -0.30 0.10</point>
-        <point>-0.55 -0.30 0.10</point>
+        <point>0.55 -0.30 0.0</point>
+        <point>-0.55 -0.30 0.0</point>
       </points>
       <wavefield>
         <topic>/vrx/wavefield/parameters</topic>
@@ -373,35 +373,37 @@
       <xDotU>0.0</xDotU>
       <yDotV>0.0</yDotV>
       <nDotR>0.0</nDotR>
-      <xU>8.0</xU>
-      <xUU>12.0</xUU>
-      <yV>8.0</yV>
-      <yVV>8.0</yVV>
-      <zW>40.0</zW>
-      <kP>24.0</kP>
-      <kPP>48.0</kPP>
-      <mQ>72.0</mQ>
-      <mQQ>70.0</mQQ>
-      <nR>64.0</nR>
-      <nRR>64.0</nRR>
+      <xU>4.0</xU>
+      <xUU>6.0</xUU>
+      <yV>4.0</yV>
+      <yVV>4.0</yVV>
+      <zW>80.0</zW>
+      <kP>12.0</kP>
+      <kPP>24.0</kPP>
+      <mQ>36.0</mQ>
+      <mQQ>35.0</mQQ>
+      <nR>32.0</nR>
+      <nRR>32.0</nRR>
     </plugin>
 
     <!-- Gazebo Thruster: Sol -->
     <plugin filename="gz-sim-thruster-system" name="gz::sim::systems::Thruster">
       <joint_name>left_prop_joint</joint_name>
-      <thrust_coefficient>0.00015</thrust_coefficient>
+      <thrust_coefficient>0.0005</thrust_coefficient>
       <fluid_density>1000</fluid_density>
-      <propeller_diameter>0.08</propeller_diameter>
-      <velocity_control>true</velocity_control>
+      <propeller_diameter>0.12</propeller_diameter>
+      <velocity_control>false</velocity_control>
+      <p_gain>0.0</p_gain>
     </plugin>
 
     <!-- Gazebo Thruster: Sağ -->
     <plugin filename="gz-sim-thruster-system" name="gz::sim::systems::Thruster">
       <joint_name>right_prop_joint</joint_name>
-      <thrust_coefficient>0.00015</thrust_coefficient>
+      <thrust_coefficient>0.0005</thrust_coefficient>
       <fluid_density>1000</fluid_density>
-      <propeller_diameter>0.08</propeller_diameter>
-      <velocity_control>true</velocity_control>
+      <propeller_diameter>0.12</propeller_diameter>
+      <velocity_control>false</velocity_control>
+      <p_gain>0.0</p_gain>
     </plugin>
 
   </model>
