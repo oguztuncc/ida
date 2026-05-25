@@ -32,9 +32,10 @@ IDA katamaranı için **tek launch** ile çalışan Gazebo Sim Harmonic + VRX Pa
 | Topic bridge | ✅ | `/scan`, `/camera/color/image_raw`, `/imu`, `/navsat` |
 | `cmd_vel_to_thrust.py` | ✅ | `/control/cmd_vel_safe` → Gazebo Transport `cmd_thrust` (sol/sağ) |
 | `sim_nav_converter.py` | ✅ | Sydney GPS → Türkiye offset, IMU yaw → pusula heading |
-| Model SDF | ✅ | 15kg, çift gövde, VRX Surface + SimpleHydrodynamics + Thruster plugin |
-| COM stabilitesi | ✅ | COM z=0.15'e taşındı, model ters dönmüyor |
-| Dikey damping | ✅ | `zW=80` (suya düşüş sonrası salınım hızlı sönümleniyor) |
+| `spawn_waypoint_markers.py` | ✅ | Mission `local_waypoints` noktalarını Gazebo'da renkli marker olarak spawn eder |
+| Model SDF | ✅ | Yaklaşık 35kg toplam hedef, çift gövde, VRX Surface + SimpleHydrodynamics + Thruster plugin |
+| COM stabilitesi | ✅ | COM TALAY varsayımına göre düşük tutuldu, model ters dönmüyor |
+| Dikey damping | ✅ | `zW=88.23` ve artırılmış Surface kaldırması ile spawn sonrası batma düzeltildi |
 
 ### Bu Oturumda Yapılan Son Değişiklikler
 
@@ -69,6 +70,9 @@ src/ida_gazebo/scripts/cmd_vel_to_thrust.py
   → Sağ thrust ters işaretleme: right = -(v + w * wheelbase / 2.0)
   → `yaw_sign=-1.0` ile Gazebo yaw yönü düzeltildi
   → Komut timeout durumunda sıfır thrust publish ediliyor
+
+src/ida_gazebo/scripts/spawn_waypoint_markers.py
+  → `local_waypoints` noktalarını Gazebo'da yeşil/mavi/kırmızı marker olarak gösterir
 ```
 
 ---
@@ -182,6 +186,45 @@ src/ida_gazebo/scripts/cmd_vel_to_thrust.py
    - Kütle, inertia, hydrodynamics, thrust coefficient ve joint damping değerleri şu an stabilite odaklı.
    - Temel simülasyon stabil olduktan sonra hızlanma, dönme, durma ve dalga tepkisi daha gerçekçi olacak şekilde kalibre edilmeli.
 
+### Parkur-1U2 → Parkur-2 → SITL Yol Haritası
+
+1. **Parkur-1U2 ilk hedef**
+   - Yarışmaya hazırlıkta ilk çalışır hedef `parkur1U2.json` olmalı.
+   - Bu parkur, şartnameye göre hazırlanan Parkur-2'ye göre daha geniş ve daha toleranslı bir başlangıç testi sağlar.
+   - Başarı kriteri: sadece waypoint bilgisi verildiğinde teknenin zikzak hattı otonom takip etmesi ve engellerden kaçınması.
+
+2. **Spawn / GPS / heading hizalama**
+   - Gazebo spawn noktası mission origin kabul edilmeli.
+   - Spawn anında `/mavros/global_position/global`, `parkur1U2.json` içindeki ilk waypoint ile aynı olmalı.
+   - Başlangıç heading'i Parkur-1U2 ilk segmentine yakın olmalı. `local_waypoints[1] = (east=11.71, north=8.90)` yaklaşık `53°` pusula heading verir.
+   - Uygulandı: VRX launch varsayılanları `spawn_x=-528.0`, `spawn_y=193.0`, `spawn_z=-0.05`, `spawn_yaw=0.646`.
+   - Uygulandı: `sim_nav_converter.py`, spawn world XY noktasını Türkiye mission origin'e map'liyor.
+
+3. **Parkur objelerini Gazebo'ya taşıma**
+   - `parkur1U2.json` içindeki `boundaries` ve `obstacles` Gazebo dünyasına spawn edilmeli.
+   - İlk aşamada gerçekçi dalga/yüzdürme yerine sabit collision/visual duba modelleri yeterli.
+   - Amaç önce kontrol, planner ve LiDAR/algı zincirini doğrulamak.
+
+4. **Ground-truth detection ara katmanı**
+   - İlk başarılı test için JSON duba haritasından tekne pozisyonuna göre `/perception/buoy_detections_raw` üretilebilir.
+   - Bu ara katman nihai perception değildir; planner/controller/Gazebo fiziğini izole test etmek içindir.
+   - Daha sonra LiDAR cluster, kamera veya YOLO tabanlı gerçek algıya geçilebilir.
+
+5. **Planner/corridor stack entegrasyonu**
+   - VRX launch'a `sensor_cross_validator_node`, `course_memory_node`, `semantic_buoy_classifier_node`, `corridor_tracker_node` ve `parkur2_planner_node` eklenmeli.
+   - Parkur-1U2 başarıyla çalıştıktan sonra aynı zincir `parkur2.json` üzerinde denenmeli.
+   - Uygulandı: Controller, `guidance/status` üzerinden yaklaşan dönüş açısını okuyup keskin dönüşlerde waypoint'e gelmeden önce yavaşlama ve bir sonraki segmente doğru pre-turn blend yapabiliyor.
+
+6. **Parkur-2 şartname genişliği**
+   - Kullanıcı notu: Parkur-2, şartnamedeki parkur dizilimini kopyalamaya çalışır; iki kenar duba arası yüzeyden yüzeye genişlik `8.12 m` hedeflenmiştir.
+   - Duba yarıçapı `0.15 m` ise merkezden merkeze genişlik `8.42 m` olur.
+   - Planner/corridor parametreleri merkez koordinat mı yüzey genişliği mi kullandığına göre netleştirilmeli.
+
+7. **ArduPilot SITL'e geçiş**
+   - Gazebo fizik + mevcut otonomi ile Parkur-1U2 ve Parkur-2 çalışmadan SITL'e geçilmemeli.
+   - SITL ilk aşamada sadece MAVROS/ArduPilot komut zinciri, mode ve actuator mapping doğrulaması için kullanılmalı.
+   - Son aşamada `/control/cmd_vel_safe` → MAVROS bridge → ArduPilot SITL → motor/mixer zinciri kapalı çevrim denenmeli.
+
 ### Orta Vadede Yapılacaklar
 
 7. **ros_gz değişikliklerinin kalıcılığını kontrol et**
@@ -219,10 +262,22 @@ ros2 launch ida_gazebo vrx_parkur1_sim.launch.py
 
 ### Spawn Koordinatları
 - Dünya: Sydney Regatta
-- x: `-528.0`, y: `193.0`, z: `-0.05` (son değer), Y: `0`
+- x: `-528.0`, y: `193.0`, z: `0.0`, Y: `0.646 rad` (Parkur-1U2 ilk segment heading ~53°)
+- `sim_nav_converter.py`, bu spawn noktasını `40.1181, 26.4081` mission origin'e hizalar.
+
+### Waypoint Markerları
+- Varsayılan açık: `enable_waypoint_markers:=true`
+- Renkler: ilk waypoint yeşil, ara waypointler mavi, son waypoint kırmızı.
+- Marker konumları `mission_file` içindeki `local_waypoints` alanından ve `spawn_x/spawn_y` offsetinden hesaplanır.
 
 ### Model Kritik Parametreler
-- Mass: 15kg, COM: z=0.15
-- Thruster: `thrust_coefficient=0.0005`, `propeller_diameter=0.12`, `velocity_control=false`, `p_gain=0.0`, `max_thrust=20.0` (launch override)
-- Surface plugin: `hull_length=1.11`, `hull_radius=0.09`, noktalar z=0.0 (base_link frame)
-- SimpleHydrodynamics: `zW=80`, `xU=4.0`, `xUU=6.0`
+- Mass: `base_link=32.6kg`, ek housing/prop linkleriyle toplam yaklaşık `35kg`.
+- Thruster: `thrust_coefficient=0.0008`, `propeller_diameter=0.10`, `velocity_control=false`, `p_gain=0.0`, `max_thrust=58.9N` (launch override, 6kgf efektif itki varsayımı).
+- Surface plugin: `hull_length=1.11`, `hull_radius=0.115`, `fluid_density=1025.9`, noktalar z=0.0 (base_link frame).
+- SimpleHydrodynamics: `xU=18.56`, `xUU=18.56`, `yV=36.45`, `yVV=10.93`, `zW=88.23`, `nR=8.0`, `nRR=4.0`.
+
+### Parkur-1U2 Controller Ayarları
+- Maksimum ileri hız: `0.20 m/s`
+- Maksimum yaw hızı: `0.90 rad/s`
+- Keskin dönüşte yerinde dönme eşiği: `45°`
+- Stop-turn-go: `waypoint_stop_turn_enabled=true`, `waypoint_stop_turn_distance_m=1.1`, `waypoint_stop_turn_angle_deg=35.0`, `waypoint_stop_turn_align_error_deg=10.0`.

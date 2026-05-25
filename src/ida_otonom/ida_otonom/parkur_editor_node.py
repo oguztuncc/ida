@@ -3,7 +3,7 @@ import math
 import os
 import tkinter as tk
 from pathlib import Path
-from tkinter import filedialog, messagebox, ttk
+from tkinter import filedialog, messagebox
 
 import rclpy
 from rclpy.node import Node
@@ -284,7 +284,10 @@ class ParkurEditorNode(Node):
             self._load_json_file(path)
 
     def _build_station_pairs(
-        self, route: list[tuple[float, float]], stations: list[tuple[float, float]], course_width_m: float
+        self,
+        route: list[tuple[float, float]],
+        stations: list[tuple[float, float]],
+        course_width_m: float,
     ) -> list[dict]:
         boundaries = []
         previous = route[0]

@@ -182,7 +182,6 @@ class LidarProcessorNode(Node):
         # Latch aktifse: önce latch yönündeki en iyiyi bul,
         # sonra global en iyiyi bul ve karşılaştır.
         latched_best_score = None
-        latched_best_clearance = best_clearance
 
         for step in range(steps + 1):
             angle = -self.max_avoidance_angle_deg + step * self.candidate_step_deg
@@ -200,7 +199,6 @@ class LidarProcessorNode(Node):
 
             if latched_best_score is None or score > latched_best_score:
                 latched_best_score = score
-                latched_best_clearance = clearance
 
             if best_score is None or score > best_score:
                 best_score = score

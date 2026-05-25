@@ -18,6 +18,8 @@ class SimNavConverter(Node):
 
         self.declare_parameter('sim_origin_lat', -33.724223)
         self.declare_parameter('sim_origin_lon', 150.679736)
+        self.declare_parameter('spawn_east_m', 0.0)
+        self.declare_parameter('spawn_north_m', 0.0)
         self.declare_parameter('target_origin_lat', 40.1181)
         self.declare_parameter('target_origin_lon', 26.4081)
         self.declare_parameter('navsat_topic', '/model/ida_katamaran/navsat')
@@ -25,8 +27,14 @@ class SimNavConverter(Node):
 
         self.sim_lat0 = self.get_parameter('sim_origin_lat').value
         self.sim_lon0 = self.get_parameter('sim_origin_lon').value
+        self.spawn_east_m = self.get_parameter('spawn_east_m').value
+        self.spawn_north_m = self.get_parameter('spawn_north_m').value
         self.target_lat0 = self.get_parameter('target_origin_lat').value
         self.target_lon0 = self.get_parameter('target_origin_lon').value
+        self.spawn_lat0, self.spawn_lon0 = self.world_xy_to_lat_lon(
+            self.spawn_east_m,
+            self.spawn_north_m,
+        )
 
         navsat_topic = self.get_parameter('navsat_topic').value
         imu_topic = self.get_parameter('imu_topic').value
@@ -47,13 +55,22 @@ class SimNavConverter(Node):
 
         self.get_logger().info(
             f'SimNavConverter basladi: '
-            f'sim_origin=({self.sim_lat0}, {self.sim_lon0}) -> '
+            f'spawn_gps=({self.spawn_lat0}, {self.spawn_lon0}) -> '
             f'target_origin=({self.target_lat0}, {self.target_lon0})'
         )
 
+    def world_xy_to_lat_lon(self, east_m: float, north_m: float):
+        lat = self.sim_lat0 + north_m / 111_320.0
+        lon_scale = max(
+            111_320.0 * math.cos(math.radians(self.sim_lat0)),
+            1e-6,
+        )
+        lon = self.sim_lon0 + east_m / lon_scale
+        return lat, lon
+
     def navsat_cb(self, msg: NavSatFix):
-        dlat = msg.latitude - self.sim_lat0
-        dlon = msg.longitude - self.sim_lon0
+        dlat = msg.latitude - self.spawn_lat0
+        dlon = msg.longitude - self.spawn_lon0
 
         out = NavSatFix()
         out.header = msg.header

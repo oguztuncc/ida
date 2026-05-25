@@ -5,15 +5,15 @@
     <link name="base_link">
       <pose>0 0 0 0 0 0</pose>
       <inertial>
-        <pose>0 0 0.15 0 0 0</pose>
-        <mass>15</mass>
+        <pose>0.028 0.008 0.029 0 0 0</pose>
+        <mass>32.6</mass>
         <inertia>
-          <ixx>0.79</ixx>
+          <ixx>0.72</ixx>
           <ixy>0</ixy>
           <ixz>0</ixz>
-          <iyy>1.57</iyy>
+          <iyy>1.73</iyy>
           <iyz>0</iyz>
-          <izz>2.30</izz>
+          <izz>2.16</izz>
         </inertia>
       </inertial>
 
@@ -341,8 +341,9 @@
     <plugin filename="libSurface.so" name="vrx::Surface">
       <link_name>base_link</link_name>
       <hull_length>1.11</hull_length>
-      <hull_radius>0.09</hull_radius>
+      <hull_radius>0.115</hull_radius>
       <fluid_level>0</fluid_level>
+      <fluid_density>1025.9</fluid_density>
       <points>
         <point>0.55 0.30 0.0</point>
         <point>-0.55 0.30 0.0</point>
@@ -356,8 +357,9 @@
     <plugin filename="libSurface.so" name="vrx::Surface">
       <link_name>base_link</link_name>
       <hull_length>1.11</hull_length>
-      <hull_radius>0.09</hull_radius>
+      <hull_radius>0.115</hull_radius>
       <fluid_level>0</fluid_level>
+      <fluid_density>1025.9</fluid_density>
       <points>
         <point>0.55 -0.30 0.0</point>
         <point>-0.55 -0.30 0.0</point>
@@ -373,25 +375,25 @@
       <xDotU>0.0</xDotU>
       <yDotV>0.0</yDotV>
       <nDotR>0.0</nDotR>
-      <xU>4.0</xU>
-      <xUU>6.0</xUU>
-      <yV>4.0</yV>
-      <yVV>4.0</yVV>
-      <zW>80.0</zW>
+      <xU>18.56</xU>
+      <xUU>18.56</xUU>
+      <yV>36.45</yV>
+      <yVV>10.93</yVV>
+      <zW>88.23</zW>
       <kP>12.0</kP>
       <kPP>24.0</kPP>
       <mQ>36.0</mQ>
       <mQQ>35.0</mQQ>
-      <nR>32.0</nR>
-      <nRR>32.0</nRR>
+      <nR>8.0</nR>
+      <nRR>4.0</nRR>
     </plugin>
 
     <!-- Gazebo Thruster: Sol -->
     <plugin filename="gz-sim-thruster-system" name="gz::sim::systems::Thruster">
       <joint_name>left_prop_joint</joint_name>
-      <thrust_coefficient>0.0005</thrust_coefficient>
-      <fluid_density>1000</fluid_density>
-      <propeller_diameter>0.12</propeller_diameter>
+      <thrust_coefficient>0.0008</thrust_coefficient>
+      <fluid_density>1025.9</fluid_density>
+      <propeller_diameter>0.10</propeller_diameter>
       <velocity_control>false</velocity_control>
       <p_gain>0.0</p_gain>
     </plugin>
@@ -399,9 +401,9 @@
     <!-- Gazebo Thruster: Sağ -->
     <plugin filename="gz-sim-thruster-system" name="gz::sim::systems::Thruster">
       <joint_name>right_prop_joint</joint_name>
-      <thrust_coefficient>0.0005</thrust_coefficient>
-      <fluid_density>1000</fluid_density>
-      <propeller_diameter>0.12</propeller_diameter>
+      <thrust_coefficient>0.0008</thrust_coefficient>
+      <fluid_density>1025.9</fluid_density>
+      <propeller_diameter>0.10</propeller_diameter>
       <velocity_control>false</velocity_control>
       <p_gain>0.0</p_gain>
     </plugin>

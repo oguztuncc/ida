@@ -19,6 +19,23 @@ class ControllerNode(Node):
         self.declare_parameter("planner_timeout_s", 0.5)
         self.declare_parameter("allow_reverse_planner_speed", False)
         self.declare_parameter("geofence_timeout_s", 1.0)
+        self.declare_parameter("turn_in_place_error_deg", 0.0)
+        self.declare_parameter("turn_in_place_speed_mps", 0.0)
+        self.declare_parameter("preturn_enabled", False)
+        self.declare_parameter("preturn_distance_m", 0.0)
+        self.declare_parameter("preturn_turn_angle_deg", 60.0)
+        self.declare_parameter("preturn_speed_mps", 0.08)
+        self.declare_parameter("preturn_max_blend", 0.60)
+        self.declare_parameter("preturn_brake_distance_m", 0.0)
+        self.declare_parameter("preturn_brake_speed_mps", 0.0)
+        self.declare_parameter("waypoint_slowdown_distance_m", 0.0)
+        self.declare_parameter("waypoint_min_speed_mps", 0.04)
+        self.declare_parameter("waypoint_stop_turn_enabled", False)
+        self.declare_parameter("waypoint_stop_turn_distance_m", 0.0)
+        self.declare_parameter("waypoint_stop_turn_angle_deg", 35.0)
+        self.declare_parameter("waypoint_stop_turn_align_error_deg", 10.0)
+        self.declare_parameter("waypoint_stop_turn_depart_s", 1.0)
+        self.declare_parameter("waypoint_stop_turn_depart_speed_mps", 0.10)
 
         self.kp_heading = float(self.get_parameter("kp_heading").value)
         self.max_linear_speed = float(
@@ -39,6 +56,75 @@ class ControllerNode(Node):
         self.geofence_timeout_s = float(
             self.get_parameter("geofence_timeout_s").value
         )
+        self.turn_in_place_error_deg = abs(
+            float(self.get_parameter("turn_in_place_error_deg").value)
+        )
+        self.turn_in_place_speed_mps = float(
+            self.get_parameter("turn_in_place_speed_mps").value
+        )
+        self.preturn_enabled = bool(
+            self.get_parameter("preturn_enabled").value
+        )
+        self.preturn_distance_m = max(
+            0.0,
+            float(self.get_parameter("preturn_distance_m").value),
+        )
+        self.preturn_turn_angle_deg = abs(
+            float(self.get_parameter("preturn_turn_angle_deg").value)
+        )
+        self.preturn_speed_mps = max(
+            0.0,
+            float(self.get_parameter("preturn_speed_mps").value),
+        )
+        self.preturn_max_blend = clamp(
+            float(self.get_parameter("preturn_max_blend").value),
+            0.0,
+            1.0,
+        )
+        self.preturn_brake_distance_m = max(
+            0.0,
+            float(self.get_parameter("preturn_brake_distance_m").value),
+        )
+        self.preturn_brake_speed_mps = float(
+            self.get_parameter("preturn_brake_speed_mps").value
+        )
+        self.waypoint_slowdown_distance_m = max(
+            0.0,
+            float(self.get_parameter("waypoint_slowdown_distance_m").value),
+        )
+        self.waypoint_min_speed_mps = max(
+            0.0,
+            float(self.get_parameter("waypoint_min_speed_mps").value),
+        )
+        self.waypoint_stop_turn_enabled = bool(
+            self.get_parameter("waypoint_stop_turn_enabled").value
+        )
+        self.waypoint_stop_turn_distance_m = max(
+            0.0,
+            float(self.get_parameter("waypoint_stop_turn_distance_m").value),
+        )
+        self.waypoint_stop_turn_angle_deg = abs(
+            float(self.get_parameter("waypoint_stop_turn_angle_deg").value)
+        )
+        self.waypoint_stop_turn_align_error_deg = abs(
+            float(
+                self.get_parameter(
+                    "waypoint_stop_turn_align_error_deg"
+                ).value
+            )
+        )
+        self.waypoint_stop_turn_depart_s = max(
+            0.0,
+            float(self.get_parameter("waypoint_stop_turn_depart_s").value),
+        )
+        self.waypoint_stop_turn_depart_speed_mps = max(
+            0.0,
+            float(
+                self.get_parameter(
+                    "waypoint_stop_turn_depart_speed_mps"
+                ).value
+            ),
+        )
 
         self.current_heading = None
         self.target_bearing = None
@@ -50,8 +136,13 @@ class ControllerNode(Node):
         self.planner_bearing_ts = 0.0
         self.planner_speed_ts = 0.0
         self.vision_heading_bias = 0.0
+        self.upcoming_turn_angle = 0.0
+        self.next_bearing = None
         self.mission_started = False
         self.mission_completed = False
+        self.waypoint_stop_turn_active = False
+        self.waypoint_stop_turn_bearing = None
+        self.waypoint_stop_turn_depart_until = 0.0
 
         self.cmd_pub = self.create_publisher(Twist, "/control/cmd_vel", 10)
         self.setpoint_pub = self.create_publisher(
@@ -94,6 +185,12 @@ class ControllerNode(Node):
             String,
             "/perception/corridor_hint",
             self.corridor_hint_cb,
+            10,
+        )
+        self.create_subscription(
+            String,
+            "/guidance/status",
+            self.guidance_status_cb,
             10,
         )
         self.create_subscription(
@@ -143,6 +240,18 @@ class ControllerNode(Node):
             self.vision_heading_bias = float(data.get("heading_bias_deg", 0.0))
         except Exception:
             self.vision_heading_bias = 0.0
+
+    def guidance_status_cb(self, msg: String) -> None:
+        try:
+            data = from_json(msg.data)
+            self.upcoming_turn_angle = float(
+                data.get("upcoming_turn_angle_deg", 0.0) or 0.0
+            )
+            next_bearing = data.get("next_bearing_deg")
+            self.next_bearing = None if next_bearing is None else float(next_bearing)
+        except Exception:
+            self.upcoming_turn_angle = 0.0
+            self.next_bearing = None
 
     def geofence_status_cb(self, msg: String) -> None:
         try:
@@ -213,10 +322,12 @@ class ControllerNode(Node):
 
     def loop(self) -> None:
         if self.mission_completed:
+            self.waypoint_stop_turn_active = False
             self.publish_stop("mission_completed")
             return
 
         if not self.mission_started:
+            self.waypoint_stop_turn_active = False
             self.publish_stop("mission_not_started")
             return
 
@@ -245,9 +356,62 @@ class ControllerNode(Node):
         else:
             corrected_target = self.target_bearing + self.vision_heading_bias
 
+        now = self.get_clock().now().nanoseconds / 1e9
+        waypoint_stop_turn_depart_active = (
+            self.waypoint_stop_turn_bearing is not None
+            and now <= self.waypoint_stop_turn_depart_until
+        )
+        if (
+            self.waypoint_stop_turn_enabled
+            and not self.waypoint_stop_turn_active
+            and not waypoint_stop_turn_depart_active
+            and self.target_distance is not None
+            and self.next_bearing is not None
+            and self.waypoint_stop_turn_distance_m > 0.0
+            and self.upcoming_turn_angle >= self.waypoint_stop_turn_angle_deg
+            and self.target_distance <= self.waypoint_stop_turn_distance_m
+        ):
+            self.waypoint_stop_turn_active = True
+            self.waypoint_stop_turn_bearing = self.next_bearing
+
+        if self.waypoint_stop_turn_active:
+            corrected_target = self.waypoint_stop_turn_bearing
+            target_source = "waypoint_stop_turn_align"
+        elif waypoint_stop_turn_depart_active:
+            corrected_target = self.waypoint_stop_turn_bearing
+            target_source = "waypoint_stop_turn_depart"
+
+        preturn_active = False
+        preturn_blend = 0.0
+        if (
+            self.preturn_enabled
+            and target_source == "guidance"
+            and self.target_distance is not None
+            and self.next_bearing is not None
+            and self.preturn_distance_m > 0.0
+            and self.upcoming_turn_angle >= self.preturn_turn_angle_deg
+            and self.target_distance <= self.preturn_distance_m
+        ):
+            preturn_active = True
+            proximity = 1.0 - self.target_distance / self.preturn_distance_m
+            preturn_blend = clamp(proximity, 0.0, self.preturn_max_blend)
+            corrected_target = corrected_target + normalize_angle_deg(
+                self.next_bearing - corrected_target
+            ) * preturn_blend
+
         heading_error = normalize_angle_deg(
             corrected_target - self.current_heading
         )
+
+        if (
+            self.waypoint_stop_turn_active
+            and fabs(heading_error) <= self.waypoint_stop_turn_align_error_deg
+        ):
+            self.waypoint_stop_turn_active = False
+            self.waypoint_stop_turn_depart_until = (
+                now + self.waypoint_stop_turn_depart_s
+            )
+            target_source = "waypoint_stop_turn_depart"
 
         # Parkur 3: planner kullanıyorsa hız limitini planner'dan al
         if geofence is not None:
@@ -280,6 +444,62 @@ class ControllerNode(Node):
         else:
             linear_speed = 0.05
 
+        if preturn_active:
+            linear_speed = min(linear_speed, self.preturn_speed_mps)
+            preturn_brake_active = self.target_distance <= self.preturn_brake_distance_m
+            if preturn_brake_active:
+                linear_speed = min(linear_speed, self.preturn_brake_speed_mps)
+        else:
+            preturn_brake_active = False
+
+        waypoint_stop_turn_align_active = (
+            target_source == "waypoint_stop_turn_align"
+        )
+        waypoint_stop_turn_depart_active = (
+            target_source == "waypoint_stop_turn_depart"
+        )
+        if waypoint_stop_turn_align_active:
+            linear_speed = 0.0
+        elif waypoint_stop_turn_depart_active:
+            linear_speed = min(
+                linear_speed,
+                self.waypoint_stop_turn_depart_speed_mps,
+            )
+
+        waypoint_slowdown_active = False
+        if (
+            target_source == "guidance"
+            and self.target_distance is not None
+            and self.waypoint_slowdown_distance_m > 0.0
+            and self.target_distance <= self.waypoint_slowdown_distance_m
+        ):
+            waypoint_slowdown_active = True
+            slowdown_ratio = self.target_distance / self.waypoint_slowdown_distance_m
+            slowdown_limit = max(
+                self.waypoint_min_speed_mps,
+                self.max_linear_speed * slowdown_ratio,
+            )
+            linear_speed = min(linear_speed, slowdown_limit)
+
+        turning_in_place = (
+            self.turn_in_place_error_deg > 0.0
+            and fabs(heading_error) >= self.turn_in_place_error_deg
+            and not preturn_brake_active
+            and not waypoint_stop_turn_depart_active
+        )
+        if turning_in_place:
+            linear_speed = clamp(
+                self.turn_in_place_speed_mps,
+                -self.max_linear_speed,
+                self.max_linear_speed,
+            )
+        else:
+            linear_speed = clamp(
+                linear_speed,
+                -self.max_linear_speed,
+                self.max_linear_speed,
+            )
+
         # Dinamik kazanç: büyük heading error'da daha agresif dönüş
         effective_kp = self.kp_heading
         if fabs(heading_error) > 45.0:
@@ -299,7 +519,10 @@ class ControllerNode(Node):
 
         self.get_logger().info(
             f"cmd: linear={linear_speed:.2f} angular={angular_speed:.2f} "
-            f"source={target_source} planner_fresh={self._planner_fresh()}",
+            f"source={target_source} turn_in_place={turning_in_place} "
+            f"preturn={preturn_active} "
+            f"stop_turn={waypoint_stop_turn_align_active} "
+            f"planner_fresh={self._planner_fresh()}",
             throttle_duration_sec=1.0,
         )
 
@@ -312,6 +535,28 @@ class ControllerNode(Node):
                         "heading_error_deg": heading_error,
                         "vision_heading_bias_deg": self.vision_heading_bias,
                         "target_source": target_source,
+                        "turn_in_place": turning_in_place,
+                        "turn_in_place_error_deg": (
+                            self.turn_in_place_error_deg
+                        ),
+                        "preturn_active": preturn_active,
+                        "preturn_blend": preturn_blend,
+                        "preturn_brake_active": preturn_brake_active,
+                        "waypoint_slowdown_active": waypoint_slowdown_active,
+                        "waypoint_slowdown_distance_m": (
+                            self.waypoint_slowdown_distance_m
+                        ),
+                        "waypoint_stop_turn_active": (
+                            waypoint_stop_turn_align_active
+                        ),
+                        "waypoint_stop_turn_depart_active": (
+                            waypoint_stop_turn_depart_active
+                        ),
+                        "waypoint_stop_turn_bearing_deg": (
+                            self.waypoint_stop_turn_bearing
+                        ),
+                        "upcoming_turn_angle_deg": self.upcoming_turn_angle,
+                        "next_bearing_deg": self.next_bearing,
                         "planner_speed_limit_mps": self.planner_speed_limit,
                         "geofence_outside_duration_s": None
                         if geofence is None

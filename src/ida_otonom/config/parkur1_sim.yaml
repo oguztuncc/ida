@@ -30,7 +30,10 @@ mission_manager_node:
 
 gps_guidance_node:
   ros__parameters:
-    arrival_radius_m: 1.0
+    arrival_radius_m: 1.1
+    use_route_lookahead: true
+    route_lookahead_m: 2.0
+    route_lookahead_cross_turns: false
 
 geofence_monitor_node:
   ros__parameters:
@@ -44,12 +47,29 @@ geofence_monitor_node:
 controller_node:
   ros__parameters:
     kp_heading: 0.020
-    max_linear_speed: 0.32
-    max_angular_speed: 0.60
+    max_linear_speed: 0.20
+    max_angular_speed: 0.90
     use_planner_bearing: true
     planner_timeout_s: 0.8
     allow_reverse_planner_speed: false
     geofence_timeout_s: 0.8
+    turn_in_place_error_deg: 45.0
+    turn_in_place_speed_mps: 0.0
+    preturn_enabled: false
+    preturn_distance_m: 5.0
+    preturn_turn_angle_deg: 45.0
+    preturn_speed_mps: 0.09
+    preturn_max_blend: 0.45
+    preturn_brake_distance_m: 0.7
+    preturn_brake_speed_mps: -0.03
+    waypoint_slowdown_distance_m: 4.0
+    waypoint_min_speed_mps: 0.03
+    waypoint_stop_turn_enabled: true
+    waypoint_stop_turn_distance_m: 1.1
+    waypoint_stop_turn_angle_deg: 35.0
+    waypoint_stop_turn_align_error_deg: 10.0
+    waypoint_stop_turn_depart_s: 1.2
+    waypoint_stop_turn_depart_speed_mps: 0.10
 
 safety_node:
   ros__parameters:
