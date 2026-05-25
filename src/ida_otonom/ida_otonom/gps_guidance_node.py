@@ -250,6 +250,17 @@ class GpsGuidanceNode(Node):
             lookahead_target = self._route_lookahead_target()
             if lookahead_target is not None:
                 bearing = self._bearing_to_local_target(*lookahead_target)
+        if self.active_waypoint_index > 0:
+            prev_target = self.waypoints[self.active_waypoint_index - 1]
+            leg_bearing = bearing_deg(
+                float(prev_target["lat"]),
+                float(prev_target["lon"]),
+                tgt_lat,
+                tgt_lon,
+            )
+        else:
+            leg_bearing = waypoint_bearing
+
         upcoming_turn_angle = 0.0
         next_waypoint_index = None
         next_bearing = None
@@ -259,16 +270,6 @@ class GpsGuidanceNode(Node):
             next_lat = float(next_target["lat"])
             next_lon = float(next_target["lon"])
             next_bearing = bearing_deg(tgt_lat, tgt_lon, next_lat, next_lon)
-            if self.active_waypoint_index > 0:
-                prev_target = self.waypoints[self.active_waypoint_index - 1]
-                leg_bearing = bearing_deg(
-                    float(prev_target["lat"]),
-                    float(prev_target["lon"]),
-                    tgt_lat,
-                    tgt_lon,
-                )
-            else:
-                leg_bearing = waypoint_bearing
             upcoming_turn_angle = abs(
                 (next_bearing - leg_bearing + 180.0) % 360.0 - 180.0
             )
@@ -288,6 +289,7 @@ class GpsGuidanceNode(Node):
                         "target_lon": tgt_lon,
                         "target_bearing_deg": bearing,
                         "waypoint_bearing_deg": waypoint_bearing,
+                        "leg_bearing_deg": leg_bearing,
                         "target_distance_m": distance_m,
                         "route_lookahead_enabled": self.use_route_lookahead,
                         "route_lookahead_m": self.route_lookahead_m,

@@ -36,6 +36,9 @@ class ControllerNode(Node):
         self.declare_parameter("waypoint_stop_turn_align_error_deg", 10.0)
         self.declare_parameter("waypoint_stop_turn_depart_s", 1.0)
         self.declare_parameter("waypoint_stop_turn_depart_speed_mps", 0.10)
+        self.declare_parameter("waypoint_straight_brake_enabled", False)
+        self.declare_parameter("waypoint_straight_brake_distance_m", 2.0)
+        self.declare_parameter("waypoint_straight_brake_heading_error_deg", 8.0)
 
         self.kp_heading = float(self.get_parameter("kp_heading").value)
         self.max_linear_speed = float(
@@ -125,6 +128,24 @@ class ControllerNode(Node):
                 ).value
             ),
         )
+        self.waypoint_straight_brake_enabled = bool(
+            self.get_parameter("waypoint_straight_brake_enabled").value
+        )
+        self.waypoint_straight_brake_distance_m = max(
+            0.0,
+            float(
+                self.get_parameter(
+                    "waypoint_straight_brake_distance_m"
+                ).value
+            ),
+        )
+        self.waypoint_straight_brake_heading_error_deg = abs(
+            float(
+                self.get_parameter(
+                    "waypoint_straight_brake_heading_error_deg"
+                ).value
+            )
+        )
 
         self.current_heading = None
         self.target_bearing = None
@@ -135,9 +156,16 @@ class ControllerNode(Node):
         self.planner_speed_limit = None
         self.planner_bearing_ts = 0.0
         self.planner_speed_ts = 0.0
+        self.planner_status = {}
+        self.planner_status_ts = 0.0
         self.vision_heading_bias = 0.0
         self.upcoming_turn_angle = 0.0
         self.next_bearing = None
+        self.active_waypoint_index = None
+        self.guidance_target_bearing = None
+        self.guidance_waypoint_bearing = None
+        self.guidance_leg_bearing = None
+        self.waypoint_stop_turn_pending = False
         self.mission_started = False
         self.mission_completed = False
         self.waypoint_stop_turn_active = False
@@ -179,6 +207,12 @@ class ControllerNode(Node):
             Float32,
             "/planner/speed_limit_mps",
             self.planner_speed_limit_cb,
+            10,
+        )
+        self.create_subscription(
+            String,
+            "/planner/status",
+            self.planner_status_cb,
             10,
         )
         self.create_subscription(
@@ -234,6 +268,13 @@ class ControllerNode(Node):
         self.planner_speed_limit = speed_limit
         self.planner_speed_ts = self.get_clock().now().nanoseconds / 1e9
 
+    def planner_status_cb(self, msg: String) -> None:
+        try:
+            self.planner_status = from_json(msg.data)
+            self.planner_status_ts = self.get_clock().now().nanoseconds / 1e9
+        except Exception:
+            self.planner_status = {}
+
     def corridor_hint_cb(self, msg: String) -> None:
         try:
             data = from_json(msg.data)
@@ -244,14 +285,59 @@ class ControllerNode(Node):
     def guidance_status_cb(self, msg: String) -> None:
         try:
             data = from_json(msg.data)
+            previous_index = self.active_waypoint_index
+            active_index = data.get("active_waypoint_index")
+            self.active_waypoint_index = (
+                None if active_index is None else int(active_index)
+            )
+            target_bearing = data.get("target_bearing_deg")
+            self.guidance_target_bearing = (
+                None if target_bearing is None else float(target_bearing)
+            )
+            waypoint_bearing = data.get("waypoint_bearing_deg")
+            self.guidance_waypoint_bearing = (
+                None if waypoint_bearing is None else float(waypoint_bearing)
+            )
+            leg_bearing = data.get("leg_bearing_deg")
+            self.guidance_leg_bearing = (
+                None if leg_bearing is None else float(leg_bearing)
+            )
             self.upcoming_turn_angle = float(
                 data.get("upcoming_turn_angle_deg", 0.0) or 0.0
             )
             next_bearing = data.get("next_bearing_deg")
             self.next_bearing = None if next_bearing is None else float(next_bearing)
+            if (
+                self.waypoint_stop_turn_enabled
+                and previous_index is not None
+                and self.active_waypoint_index is not None
+                and self.active_waypoint_index > previous_index
+            ):
+                self.waypoint_stop_turn_pending = True
+                self.waypoint_stop_turn_active = False
+                self.waypoint_stop_turn_depart_until = 0.0
+                self.waypoint_stop_turn_bearing = None
+            elif (
+                previous_index is not None
+                and self.active_waypoint_index is not None
+                and self.active_waypoint_index < previous_index
+            ):
+                self.waypoint_stop_turn_pending = False
+                self.waypoint_stop_turn_active = False
+                self.waypoint_stop_turn_depart_until = 0.0
+                self.waypoint_stop_turn_bearing = None
         except Exception:
             self.upcoming_turn_angle = 0.0
             self.next_bearing = None
+            self.guidance_waypoint_bearing = None
+            self.guidance_leg_bearing = None
+
+    def _waypoint_stop_turn_target(self):
+        if self.guidance_leg_bearing is not None:
+            return self.guidance_leg_bearing
+        if self.guidance_waypoint_bearing is not None:
+            return self.guidance_waypoint_bearing
+        return self.guidance_target_bearing
 
     def geofence_status_cb(self, msg: String) -> None:
         try:
@@ -295,6 +381,12 @@ class ControllerNode(Node):
         now = self.get_clock().now().nanoseconds / 1e9
         return now - self.planner_speed_ts <= self.planner_timeout_s
 
+    def _planner_status_fresh(self) -> bool:
+        if not self.planner_status:
+            return False
+        now = self.get_clock().now().nanoseconds / 1e9
+        return now - self.planner_status_ts <= self.planner_timeout_s
+
     def _geofence_override(self):
         if self.geofence_status is None:
             return None
@@ -323,11 +415,13 @@ class ControllerNode(Node):
     def loop(self) -> None:
         if self.mission_completed:
             self.waypoint_stop_turn_active = False
+            self.waypoint_stop_turn_pending = False
             self.publish_stop("mission_completed")
             return
 
         if not self.mission_started:
             self.waypoint_stop_turn_active = False
+            self.waypoint_stop_turn_pending = False
             self.publish_stop("mission_not_started")
             return
 
@@ -341,6 +435,14 @@ class ControllerNode(Node):
             and self.planner_bearing is not None
         )
         geofence = self._geofence_override()
+        planner_status_fresh = self._planner_status_fresh()
+        planner_mode = None
+        planner_reason = None
+        planner_lidar_state = None
+        if planner_status_fresh:
+            planner_mode = str(self.planner_status.get("mode", ""))
+            planner_reason = str(self.planner_status.get("reason", ""))
+            planner_lidar_state = str(self.planner_status.get("lidar_state", ""))
 
         if self.target_bearing is None and not using_planner and geofence is None:
             self.publish_stop("no_target_bearing")
@@ -362,17 +464,13 @@ class ControllerNode(Node):
             and now <= self.waypoint_stop_turn_depart_until
         )
         if (
-            self.waypoint_stop_turn_enabled
-            and not self.waypoint_stop_turn_active
-            and not waypoint_stop_turn_depart_active
-            and self.target_distance is not None
-            and self.next_bearing is not None
-            and self.waypoint_stop_turn_distance_m > 0.0
-            and self.upcoming_turn_angle >= self.waypoint_stop_turn_angle_deg
-            and self.target_distance <= self.waypoint_stop_turn_distance_m
+            self.waypoint_stop_turn_pending
+            and geofence is None
+            and self._waypoint_stop_turn_target() is not None
         ):
             self.waypoint_stop_turn_active = True
-            self.waypoint_stop_turn_bearing = self.next_bearing
+            self.waypoint_stop_turn_pending = False
+            self.waypoint_stop_turn_bearing = self._waypoint_stop_turn_target()
 
         if self.waypoint_stop_turn_active:
             corrected_target = self.waypoint_stop_turn_bearing
@@ -481,11 +579,26 @@ class ControllerNode(Node):
             )
             linear_speed = min(linear_speed, slowdown_limit)
 
+        planner_blocks_straight_brake = (
+            planner_status_fresh and planner_lidar_state in ("danger", "avoid")
+        )
+        waypoint_straight_brake_active = (
+            self.waypoint_straight_brake_enabled
+            and self.target_distance is not None
+            and self.target_distance <= self.waypoint_straight_brake_distance_m
+            and fabs(heading_error)
+            <= self.waypoint_straight_brake_heading_error_deg
+            and geofence is None
+            and not waypoint_stop_turn_align_active
+            and not waypoint_stop_turn_depart_active
+            and not planner_blocks_straight_brake
+        )
         turning_in_place = (
             self.turn_in_place_error_deg > 0.0
             and fabs(heading_error) >= self.turn_in_place_error_deg
             and not preturn_brake_active
             and not waypoint_stop_turn_depart_active
+            and not waypoint_straight_brake_active
         )
         if turning_in_place:
             linear_speed = clamp(
@@ -511,6 +624,8 @@ class ControllerNode(Node):
             -self.max_angular_speed,
             self.max_angular_speed,
         )
+        if waypoint_straight_brake_active:
+            angular_speed = 0.0
 
         cmd = Twist()
         cmd.linear.x = float(linear_speed)
@@ -522,6 +637,7 @@ class ControllerNode(Node):
             f"source={target_source} turn_in_place={turning_in_place} "
             f"preturn={preturn_active} "
             f"stop_turn={waypoint_stop_turn_align_active} "
+            f"straight_brake={waypoint_straight_brake_active} "
             f"planner_fresh={self._planner_fresh()}",
             throttle_duration_sec=1.0,
         )
@@ -546,8 +662,20 @@ class ControllerNode(Node):
                         "waypoint_slowdown_distance_m": (
                             self.waypoint_slowdown_distance_m
                         ),
+                        "waypoint_straight_brake_active": (
+                            waypoint_straight_brake_active
+                        ),
+                        "waypoint_straight_brake_distance_m": (
+                            self.waypoint_straight_brake_distance_m
+                        ),
+                        "waypoint_straight_brake_heading_error_deg": (
+                            self.waypoint_straight_brake_heading_error_deg
+                        ),
                         "waypoint_stop_turn_active": (
                             waypoint_stop_turn_align_active
+                        ),
+                        "waypoint_stop_turn_pending": (
+                            self.waypoint_stop_turn_pending
                         ),
                         "waypoint_stop_turn_depart_active": (
                             waypoint_stop_turn_depart_active
@@ -557,7 +685,15 @@ class ControllerNode(Node):
                         ),
                         "upcoming_turn_angle_deg": self.upcoming_turn_angle,
                         "next_bearing_deg": self.next_bearing,
+                        "active_waypoint_index": self.active_waypoint_index,
+                        "guidance_waypoint_bearing_deg": (
+                            self.guidance_waypoint_bearing
+                        ),
+                        "guidance_leg_bearing_deg": self.guidance_leg_bearing,
                         "planner_speed_limit_mps": self.planner_speed_limit,
+                        "planner_mode": planner_mode,
+                        "planner_reason": planner_reason,
+                        "planner_lidar_state": planner_lidar_state,
                         "geofence_outside_duration_s": None
                         if geofence is None
                         else geofence["outside_duration_s"],

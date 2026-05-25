@@ -166,11 +166,17 @@ class CmdVelToThrust(Node):
         effective_angular: float,
     ) -> None:
         max_thrust = max(abs(float(self.max_thrust)), 1e-6)
+        left_drive = float(left)
+        right_drive = -float(right)
         status = {
             'left_thrust_n': float(left),
             'right_thrust_n': float(right),
             'left_percent': float(left) / max_thrust * 100.0,
             'right_percent': float(right) / max_thrust * 100.0,
+            'left_drive_thrust_n': left_drive,
+            'right_drive_thrust_n': right_drive,
+            'left_drive_percent': left_drive / max_thrust * 100.0,
+            'right_drive_percent': right_drive / max_thrust * 100.0,
             'max_thrust_n': float(self.max_thrust),
             'linear_mps': float(linear),
             'yaw_rate_radps': float(angular),

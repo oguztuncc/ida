@@ -26,6 +26,10 @@ class MotorThrustViewer(Node):
             'right_thrust_n': 0.0,
             'left_percent': 0.0,
             'right_percent': 0.0,
+            'left_drive_thrust_n': 0.0,
+            'right_drive_thrust_n': 0.0,
+            'left_drive_percent': 0.0,
+            'right_drive_percent': 0.0,
             'max_thrust_n': 1.0,
             'stale': True,
         }
@@ -75,10 +79,10 @@ class MotorThrustViewer(Node):
         width = max(self.canvas.winfo_width(), 1)
         height = max(self.canvas.winfo_height(), 1)
 
-        left_n = self._float_status('left_thrust_n')
-        right_n = self._float_status('right_thrust_n')
-        left_pct = self._float_status('left_percent')
-        right_pct = self._float_status('right_percent')
+        left_n = self._float_status('left_drive_thrust_n')
+        right_n = self._float_status('right_drive_thrust_n')
+        left_pct = self._float_status('left_drive_percent')
+        right_pct = self._float_status('right_drive_percent')
         max_thrust = max(abs(self._float_status('max_thrust_n')), 1.0)
         stale = bool(self.status.get('stale', True))
 
