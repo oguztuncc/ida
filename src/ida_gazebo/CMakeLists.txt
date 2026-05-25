@@ -37,6 +37,7 @@ install(DIRECTORY launch config models worlds urdf meshes
 install(PROGRAMS
   scripts/cmd_vel_to_thrust.py
   scripts/mission_eval_node.py
+  scripts/motor_thrust_viewer.py
   scripts/sim_nav_converter.py
   scripts/sim_buoy_detector.py
   scripts/spawn_course_objects.py

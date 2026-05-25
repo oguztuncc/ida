@@ -1,17 +1,22 @@
 #!/usr/bin/env python3
 """
 /control/cmd_vel (Twist) -> sol/sağ thrust komutlarına dönüştürür.
+
 IDA katamaran: diferansiyel itki, arkada 2 adet sabit pervane.
 
-Gazebo Sim Thruster plugin Gazebo Transport topic dinlediği için
-ROS2 topic yerine doğrudan gz-transport üzerinden publish eder.
+Gazebo Sim Thruster plugin Gazebo Transport topic dinlediği için itki
+komutlarını gz-transport üzerinden publish eder. Aynı değerleri debug için
+ROS 2 JSON status topic'i olarak da yayınlar.
 """
 
+import json
+
 import rclpy
-from rclpy.node import Node
 from geometry_msgs.msg import Twist
-from gz.transport13 import Node as GzNode
 from gz.msgs10.double_pb2 import Double
+from gz.transport13 import Node as GzNode
+from rclpy.node import Node
+from std_msgs.msg import String
 
 
 class CmdVelToThrust(Node):
@@ -21,8 +26,10 @@ class CmdVelToThrust(Node):
         self.declare_parameter('wheelbase_m', 0.60)
         self.declare_parameter('max_thrust', 50.0)
         self.declare_parameter('command_timeout_s', 0.5)
+        self.declare_parameter('thrust_rate_limit_nps', 100.0)
         self.declare_parameter('yaw_sign', -1.0)
         self.declare_parameter('cmd_vel_topic', '/control/cmd_vel')
+        self.declare_parameter('status_topic', '/sim/motor_thrust')
         self.declare_parameter(
             'left_thrust_topic',
             '/model/ida_katamaran/joint/left_prop_joint/cmd_thrust',
@@ -35,14 +42,22 @@ class CmdVelToThrust(Node):
         self.wheelbase = self.get_parameter('wheelbase_m').value
         self.max_thrust = self.get_parameter('max_thrust').value
         self.command_timeout_s = self.get_parameter('command_timeout_s').value
+        self.thrust_rate_limit_nps = float(
+            self.get_parameter('thrust_rate_limit_nps').value
+        )
         self.yaw_sign = self.get_parameter('yaw_sign').value
         cmd_vel_topic = self.get_parameter('cmd_vel_topic').value
+        status_topic = self.get_parameter('status_topic').value
         left_topic = self.get_parameter('left_thrust_topic').value
         right_topic = self.get_parameter('right_thrust_topic').value
         self.last_cmd_ts = 0.0
+        self.last_publish_ts = 0.0
+        self.last_left_thrust = 0.0
+        self.last_right_thrust = 0.0
 
         # ROS2 subscription
         self.create_subscription(Twist, cmd_vel_topic, self.cmd_vel_cb, 10)
+        self.status_pub = self.create_publisher(String, status_topic, 10)
 
         # Gazebo transport publishers
         self.gz_node = GzNode()
@@ -53,8 +68,17 @@ class CmdVelToThrust(Node):
         self.get_logger().info(
             f'CmdVelToThrust basladi: wheelbase={self.wheelbase}m, '
             f'max_thrust={self.max_thrust}N | '
+            f'rate_limit={self.thrust_rate_limit_nps}N/s | '
+            f'ros status: {status_topic} | '
             f'gz topics: {left_topic}, {right_topic}'
         )
+
+    def limit_thrust_rate(self, target: float, current: float, dt: float) -> float:
+        if self.thrust_rate_limit_nps <= 0.0 or dt <= 0.0:
+            return target
+        max_delta = self.thrust_rate_limit_nps * dt
+        delta = max(-max_delta, min(max_delta, target - current))
+        return current + delta
 
     def cmd_vel_cb(self, msg: Twist):
         self.last_cmd_ts = self.get_clock().now().nanoseconds / 1e9
@@ -78,7 +102,14 @@ class CmdVelToThrust(Node):
         left = max(-self.max_thrust, min(self.max_thrust, left))
         right = max(-self.max_thrust, min(self.max_thrust, right))
 
-        self.publish_thrust(left, right)
+        left, right = self.publish_thrust(
+            left,
+            right,
+            stale=False,
+            linear=linear,
+            angular=msg.angular.z,
+            effective_angular=angular,
+        )
 
         self.get_logger().info(
             f' thrust -> left={left:.2f}N right={right:.2f}N '
@@ -87,7 +118,22 @@ class CmdVelToThrust(Node):
             throttle_duration_sec=0.5,
         )
 
-    def publish_thrust(self, left: float, right: float):
+    def publish_thrust(
+        self,
+        left: float,
+        right: float,
+        *,
+        stale: bool = False,
+        linear: float = 0.0,
+        angular: float = 0.0,
+        effective_angular: float = 0.0,
+    ):
+        now = self.get_clock().now().nanoseconds / 1e9
+        dt = 0.0 if self.last_publish_ts <= 0.0 else now - self.last_publish_ts
+
+        left = self.limit_thrust_rate(left, self.last_left_thrust, dt)
+        right = self.limit_thrust_rate(right, self.last_right_thrust, dt)
+
         gz_left = Double()
         gz_left.data = float(left)
         gz_right = Double()
@@ -96,11 +142,48 @@ class CmdVelToThrust(Node):
         self.left_pub.publish(gz_left)
         self.right_pub.publish(gz_right)
 
+        self.last_publish_ts = now
+        self.last_left_thrust = float(left)
+        self.last_right_thrust = float(right)
+        self.publish_status(
+            left,
+            right,
+            stale=stale,
+            linear=linear,
+            angular=angular,
+            effective_angular=effective_angular,
+        )
+        return left, right
+
+    def publish_status(
+        self,
+        left: float,
+        right: float,
+        *,
+        stale: bool,
+        linear: float,
+        angular: float,
+        effective_angular: float,
+    ) -> None:
+        max_thrust = max(abs(float(self.max_thrust)), 1e-6)
+        status = {
+            'left_thrust_n': float(left),
+            'right_thrust_n': float(right),
+            'left_percent': float(left) / max_thrust * 100.0,
+            'right_percent': float(right) / max_thrust * 100.0,
+            'max_thrust_n': float(self.max_thrust),
+            'linear_mps': float(linear),
+            'yaw_rate_radps': float(angular),
+            'effective_yaw_rate_radps': float(effective_angular),
+            'stale': bool(stale),
+        }
+        self.status_pub.publish(String(data=json.dumps(status)))
+
     def timeout_cb(self):
         now = self.get_clock().now().nanoseconds / 1e9
         command_stale = now - self.last_cmd_ts > self.command_timeout_s
         if self.last_cmd_ts <= 0.0 or command_stale:
-            self.publish_thrust(0.0, 0.0)
+            self.publish_thrust(0.0, 0.0, stale=True)
 
 
 def main(args=None):

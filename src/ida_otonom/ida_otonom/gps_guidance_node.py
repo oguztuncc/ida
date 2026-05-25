@@ -20,7 +20,7 @@ class GpsGuidanceNode(Node):
         super().__init__("gps_guidance_node")
 
         self.declare_parameter("mission_file", default_mission_file())
-        self.declare_parameter("arrival_radius_m", 3.0)
+        self.declare_parameter("arrival_radius_m", 1.0)
         self.declare_parameter("use_route_lookahead", False)
         self.declare_parameter("route_lookahead_m", 2.5)
         self.declare_parameter("route_lookahead_cross_turns", True)

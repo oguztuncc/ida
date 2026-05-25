@@ -39,6 +39,7 @@ def generate_launch_description():
     eval_timeout_s = LaunchConfiguration('eval_timeout_s')
     eval_arrival_radius_m = LaunchConfiguration('eval_arrival_radius_m')
     eval_max_cross_track_m = LaunchConfiguration('eval_max_cross_track_m')
+    enable_motor_viewer = LaunchConfiguration('enable_motor_viewer')
 
     navsat_gz = (
         f'/world/{world_name}/model/ida_katamaran/link/base_link/'
@@ -131,6 +132,8 @@ def generate_launch_description():
                               description='Evaluator waypoint kabul yaricapi'),
         DeclareLaunchArgument('eval_max_cross_track_m', default_value='5.5',
                               description='Evaluator maksimum hattan sapma'),
+        DeclareLaunchArgument('enable_motor_viewer', default_value='true',
+                              description='Motor itki gosterge penceresini ac'),
 
         gz_gui,
         gz_headless,
@@ -191,9 +194,21 @@ def generate_launch_description():
             output='screen',
             parameters=[{
                 'cmd_vel_topic': '/control/cmd_vel_safe',
+                'status_topic': '/sim/motor_thrust',
                 'wheelbase_m': 0.60,
                 'max_thrust': 58.9,
+                'thrust_rate_limit_nps': 60.0,
                 'yaw_sign': -1.0,
+            }]
+        ),
+        Node(
+            package='ida_gazebo',
+            executable='motor_thrust_viewer.py',
+            name='motor_thrust_viewer',
+            output='screen',
+            condition=IfCondition(enable_motor_viewer),
+            parameters=[{
+                'status_topic': '/sim/motor_thrust',
             }]
         ),
 

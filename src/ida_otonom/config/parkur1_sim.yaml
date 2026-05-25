@@ -30,7 +30,7 @@ mission_manager_node:
 
 gps_guidance_node:
   ros__parameters:
-    arrival_radius_m: 1.1
+    arrival_radius_m: 1.0
     use_route_lookahead: true
     route_lookahead_m: 2.0
     route_lookahead_cross_turns: false
