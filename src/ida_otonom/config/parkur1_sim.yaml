@@ -64,10 +64,10 @@ controller_node:
     preturn_brake_speed_mps: -0.03
     waypoint_slowdown_distance_m: 4.0
     waypoint_min_speed_mps: 0.03
-    waypoint_straight_brake_enabled: true
+    waypoint_straight_brake_enabled: false
     waypoint_straight_brake_distance_m: 2.0
     waypoint_straight_brake_heading_error_deg: 180.0
-    waypoint_stop_turn_enabled: true
+    waypoint_stop_turn_enabled: false
     waypoint_stop_turn_distance_m: 1.1
     waypoint_stop_turn_angle_deg: 35.0
     waypoint_stop_turn_align_error_deg: 10.0
@@ -196,7 +196,7 @@ parkur2_planner_node:
     scan_duration_s: 0.0
     scan_spin_angle_deg: 0.0
     scan_cooldown_s: 0.0
-    final_approach_distance_m: 14.0
+    final_approach_distance_m: 6.0
     waypoint_bias_weight: 0.25
 
 sim_visualizer_node:

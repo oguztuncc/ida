@@ -67,6 +67,7 @@ setup(
             'color_receiver_node = ida_otonom.color_receiver_node:main',
             'color_buoy_finder_node = ida_otonom.color_buoy_finder_node:main',
             'parkur3_planner_node = ida_otonom.parkur3_planner_node:main',
+            'control_dashboard_node = ida_otonom.control_dashboard_node:main',
             (
                 'sensor_cross_validator_node = '
                 'ida_otonom.sensor_cross_validator_node:main'
