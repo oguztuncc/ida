@@ -48,7 +48,7 @@ controller_node:
   ros__parameters:
     kp_heading: 0.020
     max_linear_speed: 0.20
-    max_angular_speed: 0.90
+    max_angular_speed: 0.75
     use_planner_bearing: true
     planner_timeout_s: 0.8
     allow_reverse_planner_speed: false

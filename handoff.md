@@ -1,283 +1,328 @@
-# IDA VRX Simülasyon — Handoff Notları
+# IDA VRX Simülasyon Handoff
 
-> Son güncelleme: 2026-05-24
-> Aktif branch: `arif/vrx-simulasyon`
-> Gazebo Sim Harmonic (gz-sim8) + VRX 2.4.0 (jazzy branch) + ROS 2 Humble
-
----
-
-## 1. Hedefimiz
-
-IDA katamaranı için **tek launch** ile çalışan Gazebo Sim Harmonic + VRX Parkur-1 simülasyon ortamı:
-
-- Gazebo Sim Harmonic'de Sydney Regatta dünyasında IDA katamaran'ı spawn etmek
-- Sensör verilerini (LiDAR, kamera, IMU, GPS) ROS 2 topic'lerine aktarmak
-- Otonomi yazılımının simülasyonda çalışabilmesi için MAVROS-compatible topic'lere dönüştürmek
-- `/control/cmd_vel_safe` → Gazebo Thruster plugin'e diferansiyel thrust komutları göndermek
-- Modelin su üzerinde **stabil, düz ve dengeli** durması
+> Son güncelleme: 2026-05-25  
+> Branch: `arif/vrx-simulasyon`  
+> Son commit: `9e842fe feat: VRX Parkur-1 simülasyonunu kalibre et`  
+> Ortam: ROS 2 Humble + Gazebo Sim Harmonic + VRX 2.4.0
 
 ---
 
-## 2. Mevcut Durum
+## 1. Genel Hedef
 
-### Çalışan / Tamamlanan
+TEKNOFEST İDA otonomi yazılımını Gazebo Sim Harmonic + VRX üzerinde çalıştırmak.
 
-| Bileşen | Durum | Not |
-|---------|-------|-----|
-| Gazebo Sim Harmonic | ✅ | Fortress kaldırıldı, Harmonic kuruldu |
-| VRX paketleri | ✅ | `vrx_gz`, `vrx_ros`, `vrx_gazebo`, `wamv_description`, `wamv_gazebo` build edildi |
-| ros_gz | ✅ | Source'tan build edildi. `actuator_msgs`, `gps_msgs`, `vision_msgs` satırları CMakeLists.txt ve mappings.py'den çıkarıldı (Humble'da yok) |
-| `ida_gazebo` paketi | ✅ | ament_cmake paketi, build edildi |
-| Launch dosyası | ✅ | `vrx_parkur1_sim.launch.py` — tek launch'ta Gazebo + spawn + bridge + otonomi node'ları |
-| Topic bridge | ✅ | `/scan`, `/camera/color/image_raw`, `/imu`, `/navsat` |
-| `cmd_vel_to_thrust.py` | ✅ | `/control/cmd_vel_safe` → Gazebo Transport `cmd_thrust` (sol/sağ) |
-| `sim_nav_converter.py` | ✅ | Sydney GPS → Türkiye offset, IMU yaw → pusula heading |
-| `spawn_waypoint_markers.py` | ✅ | Mission `local_waypoints` noktalarını Gazebo'da renkli marker olarak spawn eder |
-| Model SDF | ✅ | Yaklaşık 35kg toplam hedef, çift gövde, VRX Surface + SimpleHydrodynamics + Thruster plugin |
-| COM stabilitesi | ✅ | COM TALAY varsayımına göre düşük tutuldu, model ters dönmüyor |
-| Dikey damping | ✅ | `zW=88.23` ve artırılmış Surface kaldırması ile spawn sonrası batma düzeltildi |
-
-### Bu Oturumda Yapılan Son Değişiklikler
-
-1. **Spawn z = -0.05**: `auto_start=false` ile izole testte iyi sonuç verdi; ilk batıp çıkma/yalpa kabul edilebilir seviyeye indi.
-2. **auto_start varsayılan kapalı**: VRX launch artık `auto_start:=false` ile açılıyor. Böylece fizik testi sırasında controller motor komutu üretmiyor.
-3. **Yaw işareti düzeltildi**: Sola sürekli gitme fizik/momentum kaynaklı değil, controller-thrust yön zinciri kaynaklı çıktı. `cmd_vel_to_thrust.py` içine `yaw_sign=-1.0` eklendi; `auto_start=true` testinde tekne düz gitti.
-4. **Thruster reaksiyon torku azaltıldı**: Thruster plugin'e `p_gain=0.0` eklendi. Motorlar çalışırken teknenin 360 derece dönüp su altına girmesi kayboldu.
-5. **Komut timeout güvenliği eklendi**: `cmd_vel_to_thrust.py`, komut gelmezse periyodik sıfır thrust yayınlıyor.
-
-### Bilinen Aktif Sorunlar
-
-| Sorun | Açıklama | Önem |
-|-------|----------|------|
-| Pervane visual kaybolması | `velocity_control=false` ve `p_gain=0.0` modunda pervane render/spin gerçekçi olmayabilir | Düşük (fonksiyonelliği etkilemiyor) |
-| Spawn yüksekliği hassas | `z=-0.05` iyi sonuç verdi, farklı world/dalga koşullarında tekrar doğrulanmalı | Düşük |
-| GPS origin offset | Tekne spawn noktası ile `parkur1U2.json` origin'i henüz hizalanmadı | Orta |
+İlk pratik hedef Parkur-1U2:
+- IDA katamaran modelini Sydney Regatta dünyasında stabil spawn etmek.
+- GPS/IMU/LiDAR/kamera bridge zincirini ROS 2 topic'lerine bağlamak.
+- `/control/cmd_vel_safe` komutunu iki sabit iticiye diferansiyel thrust olarak göndermek.
+- Mission waypoint, corridor planner ve duba/engel algı zincirini simülasyonda test edilebilir hale getirmek.
+- Parkur-1U2 başarıyla çalıştıktan sonra Parkur-2 ve daha sonra ArduPilot SITL'e geçmek.
 
 ---
 
-## 3. Aktif Olarak Düzenlenen Dosyalar (Bu Oturumda)
+## 2. Bu Oturumda Ne Kadar İlerledik?
 
-```
-src/ida_gazebo/launch/vrx_parkur1_sim.launch.py
-  → `spawn_z` argümanı eklendi, varsayılan `-0.05`
-  → `auto_start` argümanı eklendi, varsayılan `false`
+### Tamamlandı
 
-src/ida_gazebo/models/ida_katamaran/model.sdf
-  → Sağ propeller joint axis: <xyz>1 0 0</xyz> → <xyz>-1 0 0</xyz>
-  → Thruster plugin'lere `p_gain=0.0` eklendi
+- `ida_gazebo` paketi üzerinden tek launch akışı çalışır hale getirildi.
+- IDA Gazebo modeli spawn oluyor, su üstünde batmadan kalıyor.
+- Sola sürekli dönme ve motor çalışınca gövdenin dönüp su altına girmesi problemleri çözüldü.
+- Gazebo NavSat/IMU verisi MAVROS benzeri GPS/heading topic'lerine çevriliyor.
+- Spawn world XY noktası `parkur1U2.json` mission origin'e hizalandı.
+- `/control/cmd_vel_safe` komutu Gazebo Transport `cmd_thrust` topic'lerine sol/sağ thrust olarak gönderiliyor.
+- Parkur waypoint markerları Gazebo'ya spawn edilebiliyor.
+- `parkur1U2.json` içindeki boundary ve obstacle dubaları Gazebo'ya collision'lı objeler olarak spawn edilebiliyor.
+- Mission JSON tabanlı sentetik duba algı node'u eklendi.
+- Corridor/planner stack VRX launch'a koşullu olarak bağlandı.
+- Mission evaluator node'u eklendi.
+- `gps_guidance_node` içine route lookahead ve yaklaşan dönüş metadata'sı eklendi.
+- `controller_node` içine waypoint slowdown, turn-in-place ve stop-turn-go modu eklendi.
+- Parkur-1 sim parametreleri yeni kontrol mantığına göre ayarlandı.
+- Lint/syntax/build doğrulamaları geçti.
 
-src/ida_gazebo/scripts/cmd_vel_to_thrust.py
-  → Sağ thrust ters işaretleme: right = -(v + w * wheelbase / 2.0)
-  → `yaw_sign=-1.0` ile Gazebo yaw yönü düzeltildi
-  → Komut timeout durumunda sıfır thrust publish ediliyor
+### Kısmen Tamamlandı
 
-src/ida_gazebo/scripts/spawn_waypoint_markers.py
-  → `local_waypoints` noktalarını Gazebo'da yeşil/mavi/kırmızı marker olarak gösterir
-```
+- Parkur-1U2 temel simülasyon akışı kabul edilebilir seviyede.
+- Duba/koridor stack launch ediliyor ve komut zinciri çalışıyor.
+- Ancak tam görev evaluator PASS sonucu henüz son ayarlarla alınmadı.
+- Manevra davranışı görsel olarak daha kabul edilebilir hale geldi, fakat Parkur-1U2/Parkur-2 için hâlâ tuning gerekiyor.
 
----
+### Henüz Yapılmadı
 
-## 4. Denenip Başarısız Olan / Öğrenilen Şeyler
-
-### ❌ `velocity_control=true` modunda Thruster plugin
-- **Sorun**: Model havaya fırlıyor, ardından DART/ODE constraint solver crash'i
-- **Neden**: `velocity_control=true` modunda joint velocity constraint'leri ODE/DART ile çakışıyor
-- **Çözüm**: `velocity_control=false` kullanılıyor
-
-### ❌ PolyhedraBuoyancyDrag plugin
-- **Sorun**: ODE collision detector'da abort/crash
-- **Neden**: Modelin collision geometrileri ile ODE'nin Polyhedra tespiti uyumsuz
-- **Çözüm**: Kaldırıldı, sadece VRX Surface plugin kullanılıyor
-
-### ❌ Model ters dönüyordu
-- **Sorun**: Spawn sonrası model ters çevriliyordu (180° roll)
-- **Neden**: COM (z=0) visual/collision geometrilerinin üstünde kaldığı için yerçekimi modeli ters çeviriyordu
-- **Çözüm**: COM z=0.15'e (float'ların içine) taşındı
-
-### ❌ Spawn z'si yanlış hesaplanıyordu
-- **Sorun**: `z=-0.3` modeli çok batık, `z=0.05` çok yüksek bırakıyordu
-- **Neden**: `<link name="base_link"><pose>0 0 0 0 0 0</pose>` olduğu halde daha önce `z=0.3` sanılmıştı
-- **Çözüm**: `z=-0.1` yapıldı (test edilmedi)
-
-### ✅ Sola sürekli dönme (Root Cause)
-- **Sorun**: Simülasyon başlar başlamaz tekne sola doğru dönüyordu
-- **Neden**: İzole `auto_start=false` testinde sola kayma görülmedi. Sorun momentum değil, controller yaw komutunun Gazebo thrust yönünde ters yorumlanmasıydı.
-- **Çözüm**: `cmd_vel_to_thrust.py` içine `yaw_sign=-1.0` eklendi. `auto_start=true` testinde tekne düz gitti.
-
-### ✅ Motor çalışırken teknenin 360 derece dönmesi
-- **Sorun**: Tekne ileri gidiyordu fakat motorlar dönerken gövde de dönüp su altına giriyordu.
-- **Neden**: Thruster plugin `velocity_control=false` modunda pervane spin PID torkunu gövdeye aktarıyordu.
-- **Çözüm**: Her iki Thruster plugin'e `p_gain=0.0` eklendi; thrust kuvveti korunurken spin reaksiyon torku bastırıldı.
+- Parkur-1U2 için headless evaluator ile kesin PASS metriği alınmadı.
+- `include_obstacles:=true` ile engel kaçınma tam doğrulanmadı.
+- Parkur-2 görevinde aynı stack doğrulanmadı.
+- Gerçek kamera/YOLO/LiDAR cluster tabanlı perception'a geçilmedi; şu an sim duba detector ground-truth yardımcı katman.
+- ArduPilot SITL entegrasyonuna başlanmadı.
 
 ---
 
-## 5. Sonraki Adımlar
+## 3. Güncel Çalıştırma Komutu
 
-### Hemen Yapılması Gerekenler
+Kullanıcının son doğruladığı çalışma komutu:
 
-1. **Build et ve test et**
-   ```bash
-   cd /home/arif/teknofest/ida
-   colcon build --packages-select ida_gazebo
-    ros2 launch ida_gazebo vrx_parkur1_sim.launch.py auto_start:=true spawn_z:=-0.05
-   ```
-
-2. **Spawn yüksekliğini doğrula**
-   - Model suya düştükten sonra salınım yapıyor mu?
-   - Float'ların batıklığı görsel olarak normal mi?
-   - Varsayılan `spawn_z=-0.05` iyi sonuç verdi
-
-3. **Sola dönme fix'ini doğrula**
-   - Thrust sıfırken (hiç cmd_vel yayınlanmazken) tekne düz duruyor mu?
-   - `cmd_vel` ile ileri komut verince tekne düz gidiyor mu?
-   - Sola/sağa dönüş komutları düzgün çalışıyor mu?
-
-### Kısa Vadede Yapılacaklar
-
-4. **Otonomi node'larının simülasyonda davranışını test et**
-   - `mission_manager` / `gps_guidance` doğru setpoint hesaplıyor mu?
-   - `controller_node` heading error'u doğru yorumluyor mu?
-   - Simülasyonda dönme komutları gerçekçi mi?
-
-5. **Pervane visual bug'ını çöz**
-   - `velocity_control=false` modunda pervane render'ı kayboluyor
-   - Gazebo Sim Harmonic'de bu bilinen bir issue olabilir
-
-6. **`.gitignore` güncelle**
-    - `src/ros_gz/` ve `src/vrx/` ekle (source tree'deki değişiklikler tracking dışında kalmalı)
-
-### Ertelenen Riskler / Sonraki Faz Planı
-
-> Not: Aşağıdaki maddeler ilk hedef olan "stabil çalışan temel Gazebo simülasyonu" tamamlanana kadar bilinçli olarak ertelendi. Öncelik önce teknenin düzgün spawn olması, su üstünde dengeli kalması ve temel ileri/sağ/sol komutlara doğru tepki vermesi.
-
-1. **GPS origin / spawn hizalama**
-   - Şu an tekne Sydney dünyasında `x=-528.0`, `y=193.0` konumunda spawn ediliyor.
-   - `sim_nav_converter.py` ise Sydney world origin'ini doğrudan Türkiye origin'ine map'liyor.
-   - Sonraki fazda spawn noktası ile `parkur1U2.json` origin'i aynı mantıksal başlangıç noktasına denk gelecek şekilde GPS offset doğrulanmalı.
-
-2. **Yaw ve thrust işaret doğrulaması**
-   - `linear.x > 0`, `angular.z > 0`, `angular.z < 0` için teknenin gerçek Gazebo davranışı gözlenmeli.
-   - Sentetik simülasyonlarda kullanılan heading artış yönü ile Gazebo/ENU yaw yönü aynı olmayabilir.
-   - Gerekirse `cmd_vel_to_thrust.py` içindeki sol/sağ thrust işaretleri veya angular işareti tekrar ayarlanmalı.
-
-3. **Gazebo Parkur-1 duba ortamı**
-   - `parkur1U2.json` içinde boundary/obstacle dizilimi var; fakat VRX launch şu an bu objeleri Gazebo dünyasına spawn etmiyor.
-   - Sonraki fazda JSON'daki boundary ve obstacle objeleri Gazebo model include/spawn mekanizmasına bağlanmalı veya özel bir world dosyası üretilmeli.
-
-4. **Koridor / planner stack entegrasyonu**
-   - Mevcut VRX launch temel zinciri başlatıyor: mission, guidance, controller, lidar_processor, safety.
-   - Gerçek koridor takibi için `sensor_cross_validator_node`, `course_memory_node`, `semantic_buoy_classifier_node`, `corridor_tracker_node` ve `parkur2_planner_node` entegrasyonu ayrıca yapılmalı.
-
-5. **Kamera ve depth eksikleri**
-   - Modelde şu an RGB kamera var; RealSense benzeri depth image akışı yok.
-   - Kamera Gazebo topic adları bridge tarafında doğrulanmalı.
-   - Depth gerektiren perception zinciri için depth kamera, stereo/depth plugin veya LiDAR tabanlı range fallback netleştirilmeli.
-
-6. **Safety ve thrust timeout iyileştirmesi**
-   - `cmd_vel_to_thrust.py` sadece yeni `/control/cmd_vel_safe` mesajı geldiğinde Gazebo thrust publish ediyor.
-   - Sonraki fazda komut timeout durumunda ve node kapanırken sıfır thrust publish eden ek güvenlik davranışı eklenmeli.
-
-7. **Sim time ve tekrar üretilebilir ortam**
-   - `/clock` bridge ediliyor fakat otonomi node'larında `use_sim_time` genel olarak ayarlı değil.
-   - Gazebo pause/slow/fast testlerinde timeout davranışları için sim time stratejisi netleştirilmeli.
-   - `src/ros_gz/` ve `src/vrx/` git dışında olduğu için kullanılan branch/commit ve lokal patch'ler ayrıca dokümante edilmeli.
-
-8. **Fizik tuning**
-   - Kütle, inertia, hydrodynamics, thrust coefficient ve joint damping değerleri şu an stabilite odaklı.
-   - Temel simülasyon stabil olduktan sonra hızlanma, dönme, durma ve dalga tepkisi daha gerçekçi olacak şekilde kalibre edilmeli.
-
-### Parkur-1U2 → Parkur-2 → SITL Yol Haritası
-
-1. **Parkur-1U2 ilk hedef**
-   - Yarışmaya hazırlıkta ilk çalışır hedef `parkur1U2.json` olmalı.
-   - Bu parkur, şartnameye göre hazırlanan Parkur-2'ye göre daha geniş ve daha toleranslı bir başlangıç testi sağlar.
-   - Başarı kriteri: sadece waypoint bilgisi verildiğinde teknenin zikzak hattı otonom takip etmesi ve engellerden kaçınması.
-
-2. **Spawn / GPS / heading hizalama**
-   - Gazebo spawn noktası mission origin kabul edilmeli.
-   - Spawn anında `/mavros/global_position/global`, `parkur1U2.json` içindeki ilk waypoint ile aynı olmalı.
-   - Başlangıç heading'i Parkur-1U2 ilk segmentine yakın olmalı. `local_waypoints[1] = (east=11.71, north=8.90)` yaklaşık `53°` pusula heading verir.
-   - Uygulandı: VRX launch varsayılanları `spawn_x=-528.0`, `spawn_y=193.0`, `spawn_z=-0.05`, `spawn_yaw=0.646`.
-   - Uygulandı: `sim_nav_converter.py`, spawn world XY noktasını Türkiye mission origin'e map'liyor.
-
-3. **Parkur objelerini Gazebo'ya taşıma**
-   - `parkur1U2.json` içindeki `boundaries` ve `obstacles` Gazebo dünyasına spawn edilmeli.
-   - İlk aşamada gerçekçi dalga/yüzdürme yerine sabit collision/visual duba modelleri yeterli.
-   - Amaç önce kontrol, planner ve LiDAR/algı zincirini doğrulamak.
-
-4. **Ground-truth detection ara katmanı**
-   - İlk başarılı test için JSON duba haritasından tekne pozisyonuna göre `/perception/buoy_detections_raw` üretilebilir.
-   - Bu ara katman nihai perception değildir; planner/controller/Gazebo fiziğini izole test etmek içindir.
-   - Daha sonra LiDAR cluster, kamera veya YOLO tabanlı gerçek algıya geçilebilir.
-
-5. **Planner/corridor stack entegrasyonu**
-   - VRX launch'a `sensor_cross_validator_node`, `course_memory_node`, `semantic_buoy_classifier_node`, `corridor_tracker_node` ve `parkur2_planner_node` eklenmeli.
-   - Parkur-1U2 başarıyla çalıştıktan sonra aynı zincir `parkur2.json` üzerinde denenmeli.
-   - Uygulandı: Controller, `guidance/status` üzerinden yaklaşan dönüş açısını okuyup keskin dönüşlerde waypoint'e gelmeden önce yavaşlama ve bir sonraki segmente doğru pre-turn blend yapabiliyor.
-
-6. **Parkur-2 şartname genişliği**
-   - Kullanıcı notu: Parkur-2, şartnamedeki parkur dizilimini kopyalamaya çalışır; iki kenar duba arası yüzeyden yüzeye genişlik `8.12 m` hedeflenmiştir.
-   - Duba yarıçapı `0.15 m` ise merkezden merkeze genişlik `8.42 m` olur.
-   - Planner/corridor parametreleri merkez koordinat mı yüzey genişliği mi kullandığına göre netleştirilmeli.
-
-7. **ArduPilot SITL'e geçiş**
-   - Gazebo fizik + mevcut otonomi ile Parkur-1U2 ve Parkur-2 çalışmadan SITL'e geçilmemeli.
-   - SITL ilk aşamada sadece MAVROS/ArduPilot komut zinciri, mode ve actuator mapping doğrulaması için kullanılmalı.
-   - Son aşamada `/control/cmd_vel_safe` → MAVROS bridge → ArduPilot SITL → motor/mixer zinciri kapalı çevrim denenmeli.
-
-### Orta Vadede Yapılacaklar
-
-7. **ros_gz değişikliklerinin kalıcılığını kontrol et**
-   - CMakeLists.txt ve mappings.py'deki `actuator_msgs`, `gps_msgs`, `vision_msgs` çıkarmaları
-   - Bir `ros_gz` güncellemesinde üzerine yazılabilir
-
-8. **SimpleHydrodynamics parametrelerini tune et**
-   - Drag katsayıları (`xU`, `xUU`, `nR`, `nRR` vb.) gerçekçi mi?
-   - Tekne hareketleri (hızlanma, dönme, durma) gerçekçi mi?
-
-9. **Alternatif thruster yaklaşımı değerlendir**
-   - Eğer `velocity_control=false` ile visual veya stabilite sorunları devam ederse, `libcustom_thruster.so` gibi custom bir plugin yazılabilir
-   - Veya Gazebo'nun `ApplyLinkWrench` sistemini kullanarak doğrudan base_link'e kuvvet/torque uygulanabilir
-
----
-
-## Hızlı Referans
-
-### Launch
 ```bash
-ros2 launch ida_gazebo vrx_parkur1_sim.launch.py
+source install/setup.bash
+ros2 launch ida_gazebo vrx_parkur1_sim.launch.py \
+  gui:=true \
+  auto_start:=true \
+  enable_course_objects:=true \
+  enable_sim_buoy_detector:=true \
+  enable_corridor_planner:=true \
+  include_obstacles:=false
 ```
 
-### Önemli Topic'ler
-| Gazebo Topic | ROS 2 Topic | Açıklama |
-|-------------|-------------|----------|
-| `/model/ida_katamaran/scan` | `/scan` | LiDAR |
-| `/model/ida_katamaran/camera/color/image_raw` | `/camera/color/image_raw` | Kamera |
-| `/model/ida_katamaran/imu` | `/imu` | IMU |
-| `/model/ida_katamaran/navsat` | `/navsat` | GPS |
-| — | `/control/cmd_vel` | `controller_node` çıkışı |
-| — | `/control/cmd_vel_safe` | `safety_node` çıkışı (cmd_vel_to_thrust.py bunu dinliyor) |
-| `/model/ida_katamaran/joint/left_prop_joint/cmd_thrust` | — | Sol thrust (Gazebo Transport) |
-| `/model/ida_katamaran/joint/right_prop_joint/cmd_thrust` | — | Sağ thrust (Gazebo Transport) |
+Son durum: bu komutta IDA spawn olduğunda artık batmıyor.
 
-### Spawn Koordinatları
-- Dünya: Sydney Regatta
-- x: `-528.0`, y: `193.0`, z: `0.0`, Y: `0.646 rad` (Parkur-1U2 ilk segment heading ~53°)
-- `sim_nav_converter.py`, bu spawn noktasını `40.1181, 26.4081` mission origin'e hizalar.
+Headless smoke/evaluator için başlangıç komutu:
 
-### Waypoint Markerları
-- Varsayılan açık: `enable_waypoint_markers:=true`
-- Renkler: ilk waypoint yeşil, ara waypointler mavi, son waypoint kırmızı.
-- Marker konumları `mission_file` içindeki `local_waypoints` alanından ve `spawn_x/spawn_y` offsetinden hesaplanır.
+```bash
+source install/setup.bash
+ros2 launch ida_gazebo vrx_parkur1_sim.launch.py \
+  gui:=false \
+  auto_start:=true \
+  enable_waypoint_markers:=false \
+  enable_course_objects:=true \
+  enable_sim_buoy_detector:=true \
+  enable_corridor_planner:=true \
+  include_obstacles:=false \
+  enable_evaluator:=true
+```
 
-### Model Kritik Parametreler
-- Mass: `base_link=32.6kg`, ek housing/prop linkleriyle toplam yaklaşık `35kg`.
-- Thruster: `thrust_coefficient=0.0008`, `propeller_diameter=0.10`, `velocity_control=false`, `p_gain=0.0`, `max_thrust=58.9N` (launch override, 6kgf efektif itki varsayımı).
-- Surface plugin: `hull_length=1.11`, `hull_radius=0.115`, `fluid_density=1025.9`, noktalar z=0.0 (base_link frame).
-- SimpleHydrodynamics: `xU=18.56`, `xUU=18.56`, `yV=36.45`, `yVV=10.93`, `zW=88.23`, `nR=8.0`, `nRR=4.0`.
+---
 
-### Parkur-1U2 Controller Ayarları
-- Maksimum ileri hız: `0.20 m/s`
-- Maksimum yaw hızı: `0.90 rad/s`
-- Keskin dönüşte yerinde dönme eşiği: `45°`
-- Stop-turn-go: `waypoint_stop_turn_enabled=true`, `waypoint_stop_turn_distance_m=1.1`, `waypoint_stop_turn_angle_deg=35.0`, `waypoint_stop_turn_align_error_deg=10.0`.
+## 4. Güncel Mimari
+
+### Gazebo Tarafı
+
+- Ana launch: `src/ida_gazebo/launch/vrx_parkur1_sim.launch.py`
+- Model: `src/ida_gazebo/models/ida_katamaran/model.sdf`
+- Komut çevirici: `src/ida_gazebo/scripts/cmd_vel_to_thrust.py`
+- GPS/heading çevirici: `src/ida_gazebo/scripts/sim_nav_converter.py`
+- Waypoint marker: `src/ida_gazebo/scripts/spawn_waypoint_markers.py`
+- Duba/engel spawner: `src/ida_gazebo/scripts/spawn_course_objects.py`
+- Sentetik duba detector: `src/ida_gazebo/scripts/sim_buoy_detector.py`
+- Görev evaluator: `src/ida_gazebo/scripts/mission_eval_node.py`
+
+### Otonomi Tarafı
+
+- Mission: `mission_manager_node`
+- Guidance: `gps_guidance_node`
+- LiDAR özet: `lidar_processor_node`
+- Duba doğrulama/sınıflandırma: `sensor_cross_validator_node`, `course_memory_node`, `semantic_buoy_classifier_node`
+- Koridor merkezi: `corridor_tracker_node`
+- Planner: `parkur2_planner_node`
+- Kontrol: `controller_node`
+- Safety: `safety_node`
+
+---
+
+## 5. Kritik Parametreler
+
+### Spawn / Mission Origin
+
+- World: Sydney Regatta
+- Spawn x/y: `-528.0`, `193.0`
+- Spawn z: `0.0`
+- Spawn yaw: `0.646 rad`
+- `sim_nav_converter.py`, spawn noktasını `40.1181, 26.4081` mission origin'e hizalar.
+- Parkur-1U2 ilk segment heading yaklaşık `53°`.
+
+### Fizik Modeli
+
+- Araç uzunluğu: yaklaşık `1.11 m`
+- Araç dış genişliği: yaklaşık `0.78 m`
+- İtici merkezleri: `y=±0.30 m`, merkezler arası `0.60 m`
+- Hedef toplam sim kütlesi: yaklaşık `35 kg`
+- `base_link` mass: `32.6 kg`
+- Ek housing/prop linkleriyle toplam: yaklaşık `35 kg`
+- COM/inertial pose: `0.028 0.008 0.029`
+- Inertia: `ixx=0.72`, `iyy=1.73`, `izz=2.16`
+
+### Surface / Hydrodynamics
+
+- Surface plugin: VRX `libSurface.so`
+- `hull_length=1.11`
+- `hull_radius=0.115`
+- `fluid_density=1025.9`
+- Surface noktaları: `x=±0.55`, `y=±0.30`, `z=0.0`
+- Hydrodynamics plugin: VRX `libSimpleHydrodynamics.so`
+- Önemli katsayılar:
+  - `xU=18.56`, `xUU=18.56`
+  - `yV=36.45`, `yVV=10.93`
+  - `zW=88.23`
+  - `kP=18.0`, `kPP=36.0`
+  - `mQ=36.0`, `mQQ=35.0`
+  - `nR=8.0`, `nRR=4.0`
+
+### Thruster
+
+- Varsayım: Degz Ultras efektif `6 kgf`, yaklaşık `58.9 N` motor başına.
+- `cmd_vel_to_thrust.py` launch override:
+  - `wheelbase_m=0.60`
+  - `max_thrust=58.9`
+  - `thrust_rate_limit_nps=60.0`
+  - `yaw_sign=-1.0`
+- SDF thruster:
+  - `thrust_coefficient=0.0008`
+  - `fluid_density=1025.9`
+  - `propeller_diameter=0.10`
+  - `velocity_control=false`
+  - `p_gain=0.0`
+
+### Parkur-1U2 Kontrol
+
+- `arrival_radius_m=1.1`
+- `use_route_lookahead=true`
+- `route_lookahead_m=2.0`
+- `route_lookahead_cross_turns=false`
+- `max_linear_speed=0.20`
+- `max_angular_speed=0.75`
+- `turn_in_place_error_deg=45.0`
+- `turn_in_place_speed_mps=0.0`
+- `waypoint_slowdown_distance_m=4.0`
+- `waypoint_min_speed_mps=0.03`
+- `waypoint_stop_turn_enabled=true`
+- `waypoint_stop_turn_distance_m=1.1`
+- `waypoint_stop_turn_angle_deg=35.0`
+- `waypoint_stop_turn_align_error_deg=10.0`
+- `waypoint_stop_turn_depart_s=1.2`
+- `waypoint_stop_turn_depart_speed_mps=0.10`
+
+---
+
+## 6. Doğrulamalar
+
+Geçen komutlar:
+
+```bash
+python3 -m py_compile \
+  src/ida_otonom/ida_otonom/controller_node.py \
+  src/ida_gazebo/scripts/cmd_vel_to_thrust.py
+```
+
+```bash
+python3 -c "import xml.etree.ElementTree as ET; ET.parse('src/ida_gazebo/models/ida_katamaran/model.sdf')"
+```
+
+```bash
+colcon build --symlink-install --packages-select ida_gazebo ida_otonom
+```
+
+```bash
+colcon test --packages-select ida_otonom
+```
+
+Ek doğrulama:
+- Headless Gazebo smoke launch çalıştı.
+- Kullanıcı GUI launch'ta spawn sonrası batmanın düzeldiğini doğruladı.
+- Son commit sonrası working tree temizdi.
+
+---
+
+## 7. Öğrenilenler / Kararlar
+
+- `velocity_control=true` thruster modu denenmemeli; model/solver kararsızlığına yol açtı.
+- `velocity_control=false` + `p_gain=0.0` mevcut durumda daha stabil.
+- Sağ propeller joint axis ve sağ thrust işareti özel dikkat istiyor; mevcut çalışan mapping korunmalı.
+- `yaw_sign=-1.0` gerekli; aksi halde controller yaw komutu Gazebo tarafında ters çalışıyor.
+- TALAY hidrodynamics katsayıları VRX `SimpleHydrodynamics` plugin'ine birebir taşınmamalı; özellikle roll/pitch damping çok düşerse model batma/devrilme eğilimi gösteriyor.
+- `y=±0.60` Surface/itici açıklığı kullanılmadı; araç dış genişliği yaklaşık `0.78 m` olduğu için `y=±0.30` korundu.
+- Gerçekçi manevra için sadece lookahead yeterli değil; keskin dönüşlerde stop-turn-go mantığı gerekiyor.
+- Dönüş/yavaşlama sırasında görülen sağ-sol yalpayı azaltmak için thrust çıkışına rate limit eklendi; ilk `90.0` hâlâ yalpalı olduğu için `60.0` seçildi ve roll damping artırıldı.
+- Ground-truth sim detector nihai algı değil, planner/controller/fizik zincirini izole test etmek için ara katman.
+
+---
+
+## 8. Açık Riskler
+
+- Tam Parkur-1U2 evaluator PASS henüz son ayarlarla alınmadı.
+- Duba/koridor planner çalışıyor ama tuning tamamlanmadı.
+- `include_obstacles:=true` engel kaçınma senaryosu henüz güvenilir seviyede değil.
+- Fizik modeli gerçek araç için başlangıç kalibrasyonu; gerçek testlerle doğrulanmadı.
+- `thrust_rate_limit_nps=60.0` görsel olarak doğrulanmalı; yalpa sürerse `45-50`, manevra yavaşlarsa `75-90` denenebilir.
+- Gerçek Degz Ultras reverse thrust bilinmiyor; sim şimdilik simetrik thrust kabul ediyor.
+- Kamera şu an RGB; RealSense D456 depth/gerçek perception zinciri doğrulanmadı.
+- `src/ros_gz/` ve `src/vrx/` source build ve lokal patch durumları ayrıca izlenmeli.
+- ArduPilot SITL henüz bağlanmadı.
+
+---
+
+## 9. Yeni Hedefler
+
+### Hedef 1: Parkur-1U2 Evaluator PASS
+
+- `include_obstacles:=false` ile headless evaluator çalıştır.
+- Başarı kriterleri:
+  - Mission tamamlanmalı.
+  - Max cross-track kabul edilebilir olmalı.
+  - Stall oluşmamalı.
+  - Waypoint min distance değerleri raporlanmalı.
+- Gerekirse ayarlanacak parametreler:
+  - `waypoint_stop_turn_distance_m`
+  - `waypoint_stop_turn_depart_s`
+  - `max_angular_speed`
+  - `nR`, `nRR`
+  - `parkur2_planner_node` hız/bearing rate limitleri
+
+### Hedef 2: Duba/Koridor Takibini Stabil Hale Getir
+
+- `enable_course_objects:=true`
+- `enable_sim_buoy_detector:=true`
+- `enable_corridor_planner:=true`
+- Önce `include_obstacles:=false`.
+- Koridor merkezinin ani sıçramalarını ve planner bearing limitlerini gözle.
+- `/planner/status`, `/planner/corridor`, `/control/setpoints` topic'lerini incele.
+
+### Hedef 3: Engel Kaçınmayı Aç
+
+- `include_obstacles:=true` ile test et.
+- `sensor_cross_validator_node`, `semantic_buoy_classifier_node`, `parkur2_planner_node` obstacle davranışını kontrol et.
+- Önce sim detector ile doğrula, sonra gerçek LiDAR/perception zincirine yaklaş.
+
+### Hedef 4: Parkur-2'ye Geç
+
+- Parkur-1U2 PASS sonrası `parkur2.json` mission dosyasına geç.
+- Parkur-2 genişlik notu:
+  - Şartname hedefi yüzeyden yüzeye `8.12 m`.
+  - Duba yarıçapı `0.15 m` ise merkezden merkeze yaklaşık `8.42 m`.
+- Config içindeki `expected_corridor_width_m`, `course_width_m`, `corridor_keepout_margin_m` alanlarını bu ayrımı bilerek ayarla.
+
+### Hedef 5: SITL Hazırlığı
+
+- Gazebo + mevcut otonomi Parkur-1U2/Parkur-2 çalışmadan ArduPilot SITL'e geçme.
+- İlk SITL hedefi sadece komut zinciri doğrulaması olmalı:
+  - `/control/cmd_vel_safe`
+  - MAVROS bridge
+  - ArduPilot mode/arm/mixer
+  - motor output mapping
+
+---
+
+## 10. Bir Sonraki Oturum İçin Önerilen İlk Komutlar
+
+```bash
+git status --short
+```
+
+```bash
+source install/setup.bash
+ros2 launch ida_gazebo vrx_parkur1_sim.launch.py \
+  gui:=false \
+  auto_start:=true \
+  enable_waypoint_markers:=false \
+  enable_course_objects:=true \
+  enable_sim_buoy_detector:=true \
+  enable_corridor_planner:=true \
+  include_obstacles:=false \
+  enable_evaluator:=true
+```
+
+Eğer evaluator tamamlanmazsa ilk bakılacak topic'ler:
+
+```bash
+ros2 topic echo /control/setpoints
+ros2 topic echo /planner/status
+ros2 topic echo /planner/corridor
+ros2 topic echo /eval/status
+```
