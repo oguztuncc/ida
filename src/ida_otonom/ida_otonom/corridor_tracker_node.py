@@ -5,17 +5,50 @@ import rclpy
 from rclpy.node import Node
 from std_msgs.msg import String
 
-from .common import clamp, from_json, now_ts, to_json
+from .common import clamp, from_json, now_ts
+from .schemas import CorridorEstimate
+from .vehicle_params import (
+    derive_safety_params,
+    load_vehicle_profile,
+    log_profile_info,
+    validate_envelope,
+)
 
 
 class CorridorTrackerNode(Node):
     def __init__(self) -> None:
         super().__init__("corridor_tracker_node")
 
+        self.declare_parameter("vehicle_profile", "ida_katamaran")
+        profile_name = str(
+            self.get_parameter("vehicle_profile").value
+        )
+        try:
+            profile, envelope = load_vehicle_profile(profile_name)
+            derived = derive_safety_params(profile, envelope)
+            log_profile_info(self.get_logger(), profile, envelope)
+            errors = validate_envelope(profile, envelope)
+            for err in errors:
+                self.get_logger().error(f"Guvenlik zarf validasyon: {err}")
+        except Exception as exc:
+            self.get_logger().warn(
+                f"Arac profili yuklenemedi ({exc}), varsayilan degerler kullaniliyor."
+            )
+            profile = None  # type: ignore[assignment]
+            envelope = None  # type: ignore[assignment]
+            derived = {}
+
+        def _default(key: str, fallback: float) -> float:
+            return float(derived.get(key, fallback))
+
         self.declare_parameter("lookahead_m", 4.0)
         self.declare_parameter("expected_corridor_width_m", 8.82)
-        self.declare_parameter("vehicle_width_m", 1.10)
-        self.declare_parameter("side_safety_margin_m", 0.35)
+        self.declare_parameter(
+            "vehicle_width_m", _default("vehicle_width_m", 1.10)
+        )
+        self.declare_parameter(
+            "side_safety_margin_m", _default("side_safety_margin_m", 0.35)
+        )
         self.declare_parameter("min_gate_width_m", 1.80)
         self.declare_parameter("max_boundary_bearing_deg", 70.0)
         self.declare_parameter("min_boundary_range_m", 0.4)
@@ -413,37 +446,32 @@ class CorridorTrackerNode(Node):
             confidence = max(confidence, 0.75)
 
         status = "corridor_visible" if confidence > 0.0 else "no_corridor"
-        self.pub.publish(
-            String(
-                data=to_json(
-                    {
-                        "timestamp": now_ts(),
-                        "status": status,
-                        "center_bearing_deg": center_bearing_deg,
-                        "center_left_m": center_left,
-                        "raw_center_left_m": raw_center_left,
-                        "confidence": confidence,
-                        "left_boundary_count": len(left),
-                        "right_boundary_count": len(right),
-                        "left_boundary_estimate_m": None
-                        if left_estimate is None
-                        else left_estimate["left_m"],
-                        "right_boundary_estimate_m": None
-                        if right_estimate is None
-                        else right_estimate["left_m"],
-                        "estimated_width_m": estimated_width,
-                        "min_gate_width_m": self.min_gate_width_m,
-                        "tracking_method": tracking_method,
-                        "obstacle_offset_m": obstacle_offset,
-                        "nearest_obstacle": nearest_obstacle,
-                        "obstacle_report_only": (
-                            not self.obstacle_avoidance_enabled
-                        ),
-                        "gate": gate,
-                    }
-                )
-            )
+        estimate = CorridorEstimate(
+            timestamp=now_ts(),
+            status=status,
+            center_bearing_deg=center_bearing_deg,
+            center_left_m=center_left,
+            raw_center_left_m=raw_center_left,
+            confidence=confidence,
+            left_boundary_count=len(left),
+            right_boundary_count=len(right),
+            left_boundary_estimate_m=None
+            if left_estimate is None
+            else left_estimate["left_m"],
+            right_boundary_estimate_m=None
+            if right_estimate is None
+            else right_estimate["left_m"],
+            estimated_width_m=estimated_width,
+            min_gate_width_m=self.min_gate_width_m,
+            tracking_method=tracking_method,
+            obstacle_offset_m=obstacle_offset,
+            nearest_obstacle=nearest_obstacle,
+            obstacle_report_only=(
+                not self.obstacle_avoidance_enabled
+            ),
+            gate=gate,
         )
+        self.pub.publish(estimate.to_msg())
 
 
 def main(args=None) -> None:

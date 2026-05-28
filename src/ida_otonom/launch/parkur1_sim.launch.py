@@ -23,6 +23,7 @@ def generate_launch_description():
     enable_geofence = LaunchConfiguration("enable_geofence")
     enable_yki_bridge = LaunchConfiguration("enable_yki_bridge")
     yki_mavlink_url = LaunchConfiguration("yki_mavlink_url")
+    vehicle_profile = LaunchConfiguration("vehicle_profile")
 
     default_config = PathJoinSubstitution(
         [FindPackageShare("ida_otonom"), "config", "parkur1_sim.yaml"]
@@ -130,6 +131,11 @@ def generate_launch_description():
                 default_value="udpout:127.0.0.1:14550",
                 description="MAVLink connection URL for YKI telemetry/commands.",
             ),
+            DeclareLaunchArgument(
+                "vehicle_profile",
+                default_value="ida_katamaran",
+                description="Arac profili YAML adi (config/vehicle_profiles/ altinda).",
+            ),
             Node(
                 package="ida_otonom",
                 executable="sim_gps_node",
@@ -213,7 +219,15 @@ def generate_launch_description():
                 name="lidar_processor_node",
                 output="screen",
                 condition=IfCondition(enable_corridor_planning),
-                parameters=[config_file],
+                parameters=[
+                    config_file,
+                    {
+                        "vehicle_profile": ParameterValue(
+                            vehicle_profile,
+                            value_type=str,
+                        )
+                    },
+                ],
             ),
             Node(
                 package="ida_otonom",
@@ -245,7 +259,15 @@ def generate_launch_description():
                 name="corridor_tracker_node",
                 output="screen",
                 condition=IfCondition(enable_corridor_planning),
-                parameters=[config_file],
+                parameters=[
+                    config_file,
+                    {
+                        "vehicle_profile": ParameterValue(
+                            vehicle_profile,
+                            value_type=str,
+                        )
+                    },
+                ],
             ),
             Node(
                 package="ida_otonom",
@@ -253,7 +275,15 @@ def generate_launch_description():
                 name="parkur2_planner_node",
                 output="screen",
                 condition=IfCondition(enable_corridor_planning),
-                parameters=[config_file],
+                parameters=[
+                    config_file,
+                    {
+                        "vehicle_profile": ParameterValue(
+                            vehicle_profile,
+                            value_type=str,
+                        )
+                    },
+                ],
             ),
             Node(
                 package="ida_otonom",

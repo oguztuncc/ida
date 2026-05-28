@@ -36,6 +36,7 @@ def generate_launch_description():
     color_image_topic = LaunchConfiguration("color_image_topic")
     depth_image_topic = LaunchConfiguration("depth_image_topic")
     camera_info_topic = LaunchConfiguration("camera_info_topic")
+    vehicle_profile = LaunchConfiguration("vehicle_profile")
     enable_parkur2_only = PythonExpression(
         [
             "'",
@@ -181,6 +182,11 @@ def generate_launch_description():
                 "camera_info_topic",
                 default_value="/camera/camera/color/camera_info",
                 description="RealSense color camera info topic.",
+            ),
+            DeclareLaunchArgument(
+                "vehicle_profile",
+                default_value="ida_katamaran",
+                description="Arac profili YAML adi (config/vehicle_profiles/ altinda).",
             ),
             Node(
                 package="ida_otonom",
@@ -370,7 +376,15 @@ def generate_launch_description():
                 name="lidar_processor_node",
                 output="screen",
                 condition=IfCondition(enable_parkur2_only),
-                parameters=[config_file],
+                parameters=[
+                    config_file,
+                    {
+                        "vehicle_profile": ParameterValue(
+                            vehicle_profile,
+                            value_type=str,
+                        )
+                    },
+                ],
             ),
             Node(
                 package="ida_otonom",
@@ -402,7 +416,15 @@ def generate_launch_description():
                 name="corridor_tracker_node",
                 output="screen",
                 condition=IfCondition(enable_parkur2_only),
-                parameters=[config_file],
+                parameters=[
+                    config_file,
+                    {
+                        "vehicle_profile": ParameterValue(
+                            vehicle_profile,
+                            value_type=str,
+                        )
+                    },
+                ],
             ),
             Node(
                 package="ida_otonom",
@@ -410,7 +432,15 @@ def generate_launch_description():
                 name="parkur2_planner_node",
                 output="screen",
                 condition=IfCondition(enable_parkur2_only),
-                parameters=[config_file],
+                parameters=[
+                    config_file,
+                    {
+                        "vehicle_profile": ParameterValue(
+                            vehicle_profile,
+                            value_type=str,
+                        )
+                    },
+                ],
             ),
             Node(
                 package="ida_otonom",

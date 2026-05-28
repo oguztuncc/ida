@@ -11,8 +11,8 @@ from .common import (
     default_mission_file,
     haversine_m,
     resolve_mission_file,
-    to_json,
 )
+from .schemas import GuidanceStatus
 
 
 class GpsGuidanceNode(Node):
@@ -281,29 +281,23 @@ class GpsGuidanceNode(Node):
             self.advance_pub.publish(Int32(data=self.active_waypoint_index))
 
         self.status_pub.publish(
-            String(
-                data=to_json(
-                    {
-                        "active_waypoint_index": self.active_waypoint_index,
-                        "target_lat": tgt_lat,
-                        "target_lon": tgt_lon,
-                        "target_bearing_deg": bearing,
-                        "waypoint_bearing_deg": waypoint_bearing,
-                        "leg_bearing_deg": leg_bearing,
-                        "target_distance_m": distance_m,
-                        "route_lookahead_enabled": self.use_route_lookahead,
-                        "route_lookahead_m": self.route_lookahead_m,
-                        "route_lookahead_cross_turns": (
-                            self.route_lookahead_cross_turns
-                        ),
-                        "route_lookahead_target": lookahead_target,
-                        "next_waypoint_index": next_waypoint_index,
-                        "next_bearing_deg": next_bearing,
-                        "upcoming_turn_angle_deg": upcoming_turn_angle,
-                        "mission_started": self.mission_started,
-                    }
-                )
-            )
+            GuidanceStatus(
+                active_waypoint_index=self.active_waypoint_index,
+                target_lat=tgt_lat,
+                target_lon=tgt_lon,
+                target_bearing_deg=bearing,
+                waypoint_bearing_deg=waypoint_bearing,
+                leg_bearing_deg=leg_bearing,
+                target_distance_m=distance_m,
+                mission_started=self.mission_started,
+                route_lookahead_enabled=self.use_route_lookahead,
+                route_lookahead_m=self.route_lookahead_m,
+                route_lookahead_cross_turns=self.route_lookahead_cross_turns,
+                route_lookahead_target=lookahead_target,
+                next_waypoint_index=next_waypoint_index,
+                next_bearing_deg=next_bearing,
+                upcoming_turn_angle_deg=upcoming_turn_angle,
+            ).to_msg()
         )
 
 

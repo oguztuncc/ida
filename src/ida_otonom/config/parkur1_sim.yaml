@@ -20,8 +20,6 @@ parkur2_sim_node:
     detection_fov_deg: 180.0
     detection_topic: /perception/buoy_detections_raw
     course_width_m: 8.82
-    vehicle_width_m: 0.76
-    vehicle_length_m: 1.11
     buoy_radius_m: 0.15
 
 mission_manager_node:
@@ -94,17 +92,14 @@ local_costmap_node:
 
 lidar_processor_node:
   ros__parameters:
-    collision_distance_m: 0.25
     sector_width_deg: 35.0
-    front_path_half_width_m: 0.90
-    vehicle_width_m: 0.76
-    vehicle_length_m: 1.11
     max_avoidance_angle_deg: 60.0
     min_avoidance_angle_deg: 30.0
     candidate_step_deg: 5.0
     candidate_sector_width_deg: 16.0
     avoidance_release_distance_m: 3.5
     latch_avoidance_direction: false
+    min_valid_range_m: 1.0
 
 course_memory_node:
   ros__parameters:
@@ -149,8 +144,6 @@ corridor_tracker_node:
     lookahead_m: 5.0
     lookahead_window_m: 2.0
     expected_corridor_width_m: 8.82
-    vehicle_width_m: 0.76
-    side_safety_margin_m: 0.35
     min_gate_width_m: 1.20
     max_boundary_bearing_deg: 90.0
     min_boundary_range_m: 0.4
@@ -163,22 +156,18 @@ parkur2_planner_node:
   ros__parameters:
     max_speed_mps: 0.28
     approach_speed_mps: 0.14
-    danger_distance_m: 0.65
     avoid_start_distance_m: 5.0
-    emergency_stop_distance_m: 0.25
     contact_recovery_enabled: true
     contact_recovery_distance_m: 0.20
     recovery_backoff_duration_s: 0.8
     recovery_backoff_speed_mps: -0.10
     recovery_turn_bearing_deg: 20.0
-    safe_clearance_m: 0.85
     max_relative_bearing_deg: 45.0
     max_pass_bearing_deg: 32.0
     max_return_bearing_deg: 25.0
     corridor_min_confidence: 0.35
     corridor_keepout_margin_m: 0.85
     obstacle_pass_margin_m: 0.85
-    min_pass_gap_width_m: 0.60
     equal_gap_epsilon_m: 0.20
     path_block_margin_m: 1.10
     pass_lookahead_m: 4.5

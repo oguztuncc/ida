@@ -40,6 +40,8 @@ def generate_launch_description():
     eval_arrival_radius_m = LaunchConfiguration('eval_arrival_radius_m')
     eval_max_cross_track_m = LaunchConfiguration('eval_max_cross_track_m')
     enable_motor_viewer = LaunchConfiguration('enable_motor_viewer')
+    vehicle_profile = LaunchConfiguration('vehicle_profile')
+    arrival_radius_m = LaunchConfiguration('arrival_radius_m')
 
     navsat_gz = (
         f'/world/{world_name}/model/ida_katamaran/link/base_link/'
@@ -112,7 +114,7 @@ def generate_launch_description():
                               description='IDA spawn yuksekligi'),
         DeclareLaunchArgument('spawn_yaw', default_value='0.646',
                               description='IDA spawn yaw radyan'),
-        DeclareLaunchArgument('auto_start', default_value='false',
+        DeclareLaunchArgument('auto_start', default_value='true',
                               description='Mission otomatik baslasin'),
         DeclareLaunchArgument('enable_waypoint_markers', default_value='true',
                               description='Waypoint markerlarini Gazeboya ekle'),
@@ -134,6 +136,16 @@ def generate_launch_description():
                               description='Evaluator maksimum hattan sapma'),
         DeclareLaunchArgument('enable_motor_viewer', default_value='true',
                               description='Motor itki gosterge penceresini ac'),
+        DeclareLaunchArgument(
+            'vehicle_profile',
+            default_value='ida_katamaran',
+            description='Arac profili YAML adi (config/vehicle_profiles/ altinda).',
+        ),
+        DeclareLaunchArgument(
+            'arrival_radius_m',
+            default_value='1.0',
+            description='Waypoint kabul yaricapi (metre).',
+        ),
 
         gz_gui,
         gz_headless,
@@ -290,7 +302,16 @@ def generate_launch_description():
             executable='gps_guidance_node',
             name='gps_guidance_node',
             output='screen',
-            parameters=[LaunchConfiguration('config_file')]
+            parameters=[
+                LaunchConfiguration('config_file'),
+                {'mission_file': LaunchConfiguration('mission_file')},
+                {
+                    'arrival_radius_m': ParameterValue(
+                        arrival_radius_m,
+                        value_type=float,
+                    )
+                },
+            ]
         ),
         Node(
             package='ida_otonom',
@@ -304,7 +325,15 @@ def generate_launch_description():
             executable='lidar_processor_node',
             name='lidar_processor_node',
             output='screen',
-            parameters=[LaunchConfiguration('config_file')]
+            parameters=[
+                LaunchConfiguration('config_file'),
+                {
+                    'vehicle_profile': ParameterValue(
+                        vehicle_profile,
+                        value_type=str,
+                    )
+                },
+            ]
         ),
         Node(
             package='ida_otonom',
@@ -336,7 +365,15 @@ def generate_launch_description():
             name='corridor_tracker_node',
             output='screen',
             condition=IfCondition(enable_corridor_planner),
-            parameters=[LaunchConfiguration('config_file')]
+            parameters=[
+                LaunchConfiguration('config_file'),
+                {
+                    'vehicle_profile': ParameterValue(
+                        vehicle_profile,
+                        value_type=str,
+                    )
+                },
+            ]
         ),
         Node(
             package='ida_otonom',
@@ -344,7 +381,15 @@ def generate_launch_description():
             name='parkur2_planner_node',
             output='screen',
             condition=IfCondition(enable_corridor_planner),
-            parameters=[LaunchConfiguration('config_file')]
+            parameters=[
+                LaunchConfiguration('config_file'),
+                {
+                    'vehicle_profile': ParameterValue(
+                        vehicle_profile,
+                        value_type=str,
+                    )
+                },
+            ]
         ),
         Node(
             package='ida_otonom',

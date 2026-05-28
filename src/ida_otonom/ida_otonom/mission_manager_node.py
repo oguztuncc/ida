@@ -6,6 +6,7 @@ from rclpy.node import Node
 from std_msgs.msg import String, Int32, Bool
 
 from .common import default_mission_file, resolve_mission_file, to_json
+from .schemas import MissionStatus
 
 
 class MissionManagerNode(Node):
@@ -454,26 +455,18 @@ class MissionManagerNode(Node):
             Int32(data=self.current_mission_index)
         )
         self.status_pub.publish(
-            String(
-                data=to_json(
-                    {
-                        "mission_loaded": self.mission_loaded,
-                        "mission_started": self.mission_started,
-                        "mission_completed": self.mission_completed,
-                        "all_missions_completed": self.all_missions_completed,
-                        "active_waypoint_index": self.active_waypoint_index,
-                        "waypoint_count": len(self.waypoints),
-                        "current_mission_index": self.current_mission_index,
-                        "total_mission_count": len(self.mission_files),
-                        "runtime_mission_load_enabled": (
-                            self.allow_runtime_mission_load
-                        ),
-                        "runtime_mission_load_required": (
-                            self.require_runtime_mission_load
-                        ),
-                    }
-                )
-            )
+            MissionStatus(
+                mission_loaded=self.mission_loaded,
+                mission_started=self.mission_started,
+                mission_completed=self.mission_completed,
+                all_missions_completed=self.all_missions_completed,
+                active_waypoint_index=self.active_waypoint_index,
+                waypoint_count=len(self.waypoints),
+                current_mission_index=self.current_mission_index,
+                total_mission_count=len(self.mission_files),
+                runtime_mission_load_enabled=self.allow_runtime_mission_load,
+                runtime_mission_load_required=self.require_runtime_mission_load,
+            ).to_msg()
         )
 
 

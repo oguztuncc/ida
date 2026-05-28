@@ -23,6 +23,10 @@ setup(
             glob('config/*.yaml'),
         ),
         (
+            os.path.join('share', package_name, 'config', 'vehicle_profiles'),
+            glob('config/vehicle_profiles/*.yaml'),
+        ),
+        (
             os.path.join('share', package_name, 'missions'),
             glob('ida_otonom/missions/*.json'),
         ),

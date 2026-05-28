@@ -57,13 +57,82 @@ source edilmelidir:
 source install/setup.bash
 ```
 
-## Parkur-1 Duba Koridor Simülasyonu
+## Gazebo VRX Simülasyonu (Önerilen)
 
-`ros2 launch` komutu yoksa önce Jazzy launch aracı kurulmalıdır:
+En güncel ve gerçekçi simülasyon **Gazebo Sim** üzerinde VRX `sydney_regatta`
+dünyasında `ida_katamaran` modeliyle çalışır. LiDAR, GPS, pusula, diferansiyel
+itki ve dalga fizikleri dahildir.
+
+### Başlatma
 
 ```bash
-sudo apt install ros-jazzy-ros2launch
+ros2 launch ida_gazebo vrx_parkur1_sim.launch.py
 ```
+
+Bu komut varsayılan olarak **GUI açık** şekilde çalışır. Gazebo penceresi
+açılacak, tekne su üzerinde olacak ve otomatik olarak waypoints arasında
+ilerlemeye başlayacaktır.
+
+> **Not:** `gui:=false` sadece uzak/sunucu ortamında veya test otomasyonunda
+> başsız çalıştırmak içindir. Görsel olarak simülasyonu izlemek istiyorsanız
+> bu argümanı **eklemeyin**.
+
+Başsız çalıştırma (sunucu/test):
+
+```bash
+ros2 launch ida_gazebo vrx_parkur1_sim.launch.py gui:=false
+```
+
+### Launch Argumentleri
+
+| Argüman | Varsayılan | Açıklama |
+|---------|-----------|----------|
+| `gui` | `true` | Gazebo GUI'yi açar |
+| `auto_start` | `true` | Görevi otomatik başlatır |
+| `enable_corridor_planner` | `true` | Koridor planlamayı aktif eder |
+| `mission_file` | `share/ida_otonom/missions/mission.json` | Görev dosyası |
+| `config_file` | `share/ida_otonom/config/parkur1_sim.yaml` | Parametre dosyası |
+
+Örnek:
+
+```bash
+ros2 launch ida_gazebo vrx_parkur1_sim.launch.py \
+  config_file:=/home/arif/teknofest/ida/src/ida_otonom/config/parkur1_sim.yaml \
+  arrival_radius_m:=3.0 \
+  enable_corridor_planner:=true
+```
+
+### Simülasyonu Temiz Durdurma (Çok Önemli)
+
+Arka planda kalan `gz sim` ve ROS node süreçleri, DDS paylaşımlı bellek
+problemlerine ve topic çakışmalarına (örneğin waypoint index'inin rastgele
+atlaması) yol açar. Her yeni launch öncesinde şu komutları çalıştırın:
+
+```bash
+pkill -9 -f "ros2 launch"
+pkill -9 -f "gz sim"
+pkill -9 -f "ida_otonom"
+rm -f /dev/shm/fastrtps_*
+ros2 daemon stop
+ros2 daemon start
+```
+
+### Son Yapılan Düzeltmeler
+
+- **LiDAR self-detection:** LiDAR (`z=0.45m`) kendi güvertesini (`z=0.30m`) ve
+  su yüzeyini algılayıp tekneyi durduruyordu. Çözüm:
+  - `lidar_processor_node`: `min_valid_range_m: 1.0` ile 1 m altı okumalar
+    (su yüzeyi) yok sayılır.
+  - Araç footprint'i içinde kalan noktalar (güverte self-detection) engel
+    mesafesi hesabına katılmaz.
+- **DDS shared memory:** FastDDS `RTPS_TRANSPORT_SHM` hatası alınıyorsa
+  `/dev/shm/fastrtps_*` temizlenmelidir.
+- **Waypoint ilerleme:** Temiz simülasyon ortamında tekne W1 → W2 → W3
+  waypoints arasında `CRUISE` modunda başarıyla ilerlemektedir.
+
+## Eski Parkur-1 Duba Koridor Simülasyonu (Turtle Visualizer)
+
+Daha hafif, turtle-benzeri 2D görsel arayüzlü eski simülasyon:
 
 ```bash
 ros2 launch ida_otonom parkur1_sim.launch.py

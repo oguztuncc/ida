@@ -25,9 +25,13 @@ class LidarProcessorNode(Node):
         self.declare_parameter("front_path_half_width_m", 0.70)
         self.declare_parameter("vehicle_width_m", 0.76)
         self.declare_parameter("vehicle_length_m", 1.11)
+        self.declare_parameter("min_valid_range_m", 0.15)
 
         self.collision_distance_m = float(
             self.get_parameter("collision_distance_m").value
+        )
+        self.min_valid_range_m = float(
+            self.get_parameter("min_valid_range_m").value
         )
         self.sector_width_deg = float(
             self.get_parameter("sector_width_deg").value
@@ -85,6 +89,7 @@ class LidarProcessorNode(Node):
             if (
                 math.isfinite(distance)
                 and msg.range_min <= distance <= msg.range_max
+                and distance >= self.min_valid_range_m
             ):
                 yield normalize_angle_deg(math.degrees(angle)), distance
             angle += msg.angle_increment
@@ -133,7 +138,11 @@ class LidarProcessorNode(Node):
             forward = distance * math.cos(angle_rad)
             left = distance * math.sin(angle_rad)
             if forward > -self.vehicle_half_length_m:
-                clearances.append(self._footprint_clearance(forward, left))
+                clearance = self._footprint_clearance(forward, left)
+                # Aracın kendi ayak izinin içinde kalan noktaları görmezden gel
+                # (LiDAR'ın kendi gövdesini/güvertesini algılamasını önler)
+                if clearance >= 0.0:
+                    clearances.append(clearance)
         return min(clearances) if clearances else 999.0
 
     def _preferred_escape_sign(

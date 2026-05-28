@@ -7,6 +7,7 @@ from sensor_msgs.msg import NavSatFix
 from std_msgs.msg import Bool, Int32, String
 
 from .common import from_json, to_json
+from .schemas import GuidanceStatus, MissionStatus, SafetyStatus
 
 try:
     from pymavlink import mavutil
@@ -181,16 +182,19 @@ class YkiBridgeNode(Node):
         self.mission_started = bool(msg.data)
 
     def mission_status_cb(self, msg: String) -> None:
-        self.mission_status = from_json(msg.data)
+        parsed = MissionStatus.parse(msg)
+        self.mission_status = parsed.__dict__ if parsed is not None else {}
 
     def guidance_status_cb(self, msg: String) -> None:
-        self.guidance_status = from_json(msg.data)
+        parsed = GuidanceStatus.parse(msg)
+        self.guidance_status = parsed.__dict__ if parsed is not None else {}
 
     def geofence_status_cb(self, msg: String) -> None:
         self.geofence_status = from_json(msg.data)
 
     def safety_status_cb(self, msg: String) -> None:
-        self.safety_status = from_json(msg.data)
+        parsed = SafetyStatus.parse(msg)
+        self.safety_status = parsed.__dict__ if parsed is not None else {}
 
     def remote_kill_status_cb(self, msg: String) -> None:
         self.remote_kill_status = from_json(msg.data)

@@ -353,6 +353,10 @@ class ControllerNode(Node):
         self.mission_started = bool(msg.data)
 
     def publish_stop(self, reason: str) -> None:
+        self.get_logger().info(
+            f"STOP: {reason}",
+            throttle_duration_sec=2.0,
+        )
         cmd = Twist()
         self.cmd_pub.publish(cmd)
         self.setpoint_pub.publish(
