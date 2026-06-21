@@ -8,6 +8,8 @@ from pathlib import Path
 import rclpy
 from ament_index_python.packages import get_package_share_directory
 from rclpy.node import Node
+from rclpy.qos import DurabilityPolicy, QoSProfile
+from std_msgs.msg import Bool
 
 
 class CourseObjectSpawner(Node):
@@ -23,6 +25,7 @@ class CourseObjectSpawner(Node):
         self.declare_parameter('buoy_height_m', 0.90)
         self.declare_parameter('include_boundaries', True)
         self.declare_parameter('include_obstacles', True)
+        self.declare_parameter('ready_topic', '/sim/course_objects_ready')
 
         self.mission_file = str(self.get_parameter('mission_file').value)
         self.spawn_x = float(self.get_parameter('spawn_x').value)
@@ -37,6 +40,14 @@ class CourseObjectSpawner(Node):
             self.get_parameter('include_obstacles').value
         )
         delay_s = float(self.get_parameter('spawn_delay_s').value)
+
+        ready_qos = QoSProfile(depth=1)
+        ready_qos.durability = DurabilityPolicy.TRANSIENT_LOCAL
+        self.ready_pub = self.create_publisher(
+            Bool,
+            str(self.get_parameter('ready_topic').value),
+            ready_qos,
+        )
 
         self.spawned = False
         self.timer = self.create_timer(max(delay_s, 0.1), self.spawn_once)
@@ -66,16 +77,18 @@ class CourseObjectSpawner(Node):
             return '1.0 0.9 0.05 1.0'
         return '1.0 0.35 0.02 1.0'
 
-    def object_sdf(self, name: str, obj: dict) -> str:
+    def object_link_sdf(self, index: int, obj: dict) -> str:
+        object_id = str(obj.get('id', f'object_{index}'))
+        safe_id = ''.join(ch if ch.isalnum() or ch == '_' else '_' for ch in object_id)
         color = self.object_color(obj)
         radius = float(obj.get('radius_m', self.buoy_radius_m))
         height = self.buoy_height_m
+        x = self.spawn_x + float(obj['east_m'])
+        y = self.spawn_y + float(obj['north_m'])
         # Silindir LiDAR hizasından geçtiği için hem görsel hem collision algılanır.
         return f'''
-<sdf version="1.6">
-  <model name="{name}">
-    <static>true</static>
-    <link name="buoy_link">
+    <link name="buoy_{index}_{safe_id}">
+      <pose>{x:.3f} {y:.3f} 0.000 0 0 0</pose>
       <visual name="buoy_visual">
         <pose>0 0 {height / 2.0:.3f} 0 0 0</pose>
         <geometry>
@@ -98,28 +111,35 @@ class CourseObjectSpawner(Node):
           </cylinder>
         </geometry>
       </collision>
-    </link>
+    </link>'''
+
+    def course_sdf(self, objects: list[dict]) -> str:
+        links = '\n'.join(
+            self.object_link_sdf(index, obj)
+            for index, obj in enumerate(objects)
+        )
+        return f'''
+<sdf version="1.6">
+  <model name="ida_course_objects">
+    <static>true</static>
+{links}
   </model>
 </sdf>
 '''
 
-    def spawn_object(self, index: int, obj: dict):
-        object_id = str(obj.get('id', f'object_{index}'))
-        safe_id = ''.join(ch if ch.isalnum() or ch == '_' else '_' for ch in object_id)
-        name = f'ida_course_{safe_id}'
-        x = self.spawn_x + float(obj['east_m'])
-        y = self.spawn_y + float(obj['north_m'])
+    def spawn_objects(self, objects: list[dict]) -> bool:
         cmd = [
             'ros2', 'run', 'ros_gz_sim', 'create',
             '-world', self.world_name,
-            '-string', self.object_sdf(name, obj),
-            '-name', name,
+            '-string', self.course_sdf(objects),
+            '-name', 'ida_course_objects',
             '-allow_renaming', 'true',
-            '-x', f'{x:.3f}',
-            '-y', f'{y:.3f}',
+            '-x', '0.000',
+            '-y', '0.000',
             '-z', '0.000',
         ]
-        subprocess.run(cmd, check=False)
+        result = subprocess.run(cmd, check=False)
+        return result.returncode == 0
 
     def spawn_once(self):
         if self.spawned:
@@ -133,13 +153,22 @@ class CourseObjectSpawner(Node):
             self.get_logger().error(f'Course object load failed: {exc}')
             return
 
-        for index, obj in enumerate(objects):
-            try:
-                self.spawn_object(index, obj)
-            except Exception as exc:
-                self.get_logger().warning(f'Object spawn skipped: {exc}')
+        if not objects:
+            self.ready_pub.publish(Bool(data=True))
+            self.get_logger().warning('No course objects found to spawn')
+            return
 
-        self.get_logger().info(f'Spawned {len(objects)} course object(s)')
+        ready = False
+        try:
+            ready = self.spawn_objects(objects)
+        except Exception as exc:
+            self.get_logger().error(f'Course object spawn failed: {exc}')
+
+        self.ready_pub.publish(Bool(data=ready))
+        if ready:
+            self.get_logger().info(f'Spawned {len(objects)} course object(s)')
+        else:
+            self.get_logger().error('Course object spawn command failed')
 
 
 def main(args=None):

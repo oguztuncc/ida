@@ -36,6 +36,7 @@ install(DIRECTORY launch models
 
 install(PROGRAMS
   scripts/cmd_vel_to_thrust.py
+  scripts/mission_start_gate.py
   scripts/mission_eval_node.py
   scripts/motor_thrust_viewer.py
   scripts/sim_nav_converter.py

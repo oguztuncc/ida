@@ -35,6 +35,9 @@ def generate_launch_description():
     enable_sim_buoy_detector = LaunchConfiguration('enable_sim_buoy_detector')
     enable_corridor_planner = LaunchConfiguration('enable_corridor_planner')
     include_obstacles = LaunchConfiguration('include_obstacles')
+    course_objects_spawn_delay_s = LaunchConfiguration('course_objects_spawn_delay_s')
+    waypoint_markers_spawn_delay_s = LaunchConfiguration('waypoint_markers_spawn_delay_s')
+    gate_start_delay_s = LaunchConfiguration('gate_start_delay_s')
     enable_evaluator = LaunchConfiguration('enable_evaluator')
     eval_timeout_s = LaunchConfiguration('eval_timeout_s')
     eval_arrival_radius_m = LaunchConfiguration('eval_arrival_radius_m')
@@ -126,6 +129,21 @@ def generate_launch_description():
                               description='Koridor/planner stackini ac'),
         DeclareLaunchArgument('include_obstacles', default_value='true',
                               description='Obstacle dubalarini simde kullan'),
+        DeclareLaunchArgument(
+            'course_objects_spawn_delay_s',
+            default_value='10.5',
+            description='Parkur obje spawn bekleme suresi',
+        ),
+        DeclareLaunchArgument(
+            'waypoint_markers_spawn_delay_s',
+            default_value='10.5',
+            description='Waypoint marker spawn bekleme suresi',
+        ),
+        DeclareLaunchArgument(
+            'gate_start_delay_s',
+            default_value='0.5',
+            description='Tum sim varliklari hazir olduktan sonra start gecikmesi',
+        ),
         DeclareLaunchArgument('enable_evaluator', default_value='false',
                               description='Headless gorev evaluatorunu ac'),
         DeclareLaunchArgument('eval_timeout_s', default_value='180.0',
@@ -236,7 +254,10 @@ def generate_launch_description():
                 'spawn_y': ParameterValue(spawn_y, value_type=float),
                 'marker_z': 0.65,
                 'world_name': world_name,
-                'spawn_delay_s': 14.0,
+                'spawn_delay_s': ParameterValue(
+                    waypoint_markers_spawn_delay_s,
+                    value_type=float,
+                ),
             }]
         ),
         Node(
@@ -250,7 +271,10 @@ def generate_launch_description():
                 'spawn_x': ParameterValue(spawn_x, value_type=float),
                 'spawn_y': ParameterValue(spawn_y, value_type=float),
                 'world_name': world_name,
-                'spawn_delay_s': 14.0,
+                'spawn_delay_s': ParameterValue(
+                    course_objects_spawn_delay_s,
+                    value_type=float,
+                ),
                 'buoy_radius_m': 0.15,
                 'buoy_height_m': 0.90,
                 'include_boundaries': True,
@@ -258,6 +282,24 @@ def generate_launch_description():
                     include_obstacles,
                     value_type=bool,
                 ),
+            }]
+        ),
+        Node(
+            package='ida_gazebo',
+            executable='mission_start_gate.py',
+            name='mission_start_gate',
+            output='screen',
+            parameters=[{
+                'auto_start': ParameterValue(auto_start, value_type=bool),
+                'require_course_objects': ParameterValue(
+                    enable_course_objects,
+                    value_type=bool,
+                ),
+                'require_waypoint_markers': ParameterValue(
+                    enable_waypoint_markers,
+                    value_type=bool,
+                ),
+                'start_delay_s': ParameterValue(gate_start_delay_s, value_type=float),
             }]
         ),
         Node(
@@ -294,7 +336,7 @@ def generate_launch_description():
             parameters=[
                 LaunchConfiguration('config_file'),
                 {'mission_file': LaunchConfiguration('mission_file')},
-                {'auto_start': ParameterValue(auto_start, value_type=bool)},
+                {'auto_start': False},
             ]
         ),
         Node(

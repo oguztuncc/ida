@@ -8,6 +8,8 @@ from pathlib import Path
 import rclpy
 from ament_index_python.packages import get_package_share_directory
 from rclpy.node import Node
+from rclpy.qos import DurabilityPolicy, QoSProfile
+from std_msgs.msg import Bool
 
 
 class WaypointMarkerSpawner(Node):
@@ -20,6 +22,7 @@ class WaypointMarkerSpawner(Node):
         self.declare_parameter('marker_z', 0.65)
         self.declare_parameter('world_name', 'sydney_regatta')
         self.declare_parameter('spawn_delay_s', 14.0)
+        self.declare_parameter('ready_topic', '/sim/waypoint_markers_ready')
 
         self.mission_file = str(self.get_parameter('mission_file').value)
         self.spawn_x = float(self.get_parameter('spawn_x').value)
@@ -27,6 +30,14 @@ class WaypointMarkerSpawner(Node):
         self.marker_z = float(self.get_parameter('marker_z').value)
         self.world_name = str(self.get_parameter('world_name').value)
         delay_s = float(self.get_parameter('spawn_delay_s').value)
+
+        ready_qos = QoSProfile(depth=1)
+        ready_qos.durability = DurabilityPolicy.TRANSIENT_LOCAL
+        self.ready_pub = self.create_publisher(
+            Bool,
+            str(self.get_parameter('ready_topic').value),
+            ready_qos,
+        )
 
         self.spawned = False
         self.timer = self.create_timer(max(delay_s, 0.1), self.spawn_once)
@@ -90,7 +101,13 @@ class WaypointMarkerSpawner(Node):
 </sdf>
 '''
 
-    def spawn_marker(self, index: int, total: int, east_m: float, north_m: float):
+    def spawn_marker(
+        self,
+        index: int,
+        total: int,
+        east_m: float,
+        north_m: float,
+    ) -> bool:
         x = self.spawn_x + east_m
         y = self.spawn_y + north_m
         cmd = [
@@ -103,7 +120,8 @@ class WaypointMarkerSpawner(Node):
             '-y', f'{y:.3f}',
             '-z', f'{self.marker_z:.3f}',
         ]
-        subprocess.run(cmd, check=False)
+        result = subprocess.run(cmd, check=False)
+        return result.returncode == 0
 
     def spawn_once(self):
         if self.spawned:
@@ -119,12 +137,28 @@ class WaypointMarkerSpawner(Node):
 
         if not waypoints:
             self.get_logger().warning('No local_waypoints found for markers')
+            self.ready_pub.publish(Bool(data=True))
             return
 
+        ready = True
         for index, (east_m, north_m) in enumerate(waypoints):
-            self.spawn_marker(index, len(waypoints), east_m, north_m)
+            try:
+                marker_ready = self.spawn_marker(
+                    index,
+                    len(waypoints),
+                    east_m,
+                    north_m,
+                )
+                ready = ready and marker_ready
+            except Exception as exc:
+                ready = False
+                self.get_logger().warning(f'Waypoint marker spawn skipped: {exc}')
 
-        self.get_logger().info(f'Spawned {len(waypoints)} waypoint marker(s)')
+        self.ready_pub.publish(Bool(data=ready))
+        if ready:
+            self.get_logger().info(f'Spawned {len(waypoints)} waypoint marker(s)')
+        else:
+            self.get_logger().error('Waypoint marker spawn command failed')
 
 
 def main(args=None):
