@@ -1,0 +1,412 @@
+<?xml version="1.0"?>
+<sdf version="1.6">
+  <model name="ida_katamaran">
+    <!-- Ana gövde linki -->
+    <link name="base_link">
+      <pose>0 0 0 0 0 0</pose>
+      <inertial>
+        <pose>0.028 0.008 0.029 0 0 0</pose>
+        <mass>32.6</mass>
+        <inertia>
+          <ixx>0.72</ixx>
+          <ixy>0</ixy>
+          <ixz>0</ixz>
+          <iyy>1.73</iyy>
+          <iyz>0</iyz>
+          <izz>2.16</izz>
+        </inertia>
+      </inertial>
+
+      <!-- Sol gövde (float) -->
+      <visual name="left_float_visual">
+        <pose>0 0.30 0.10 0 0 0</pose>
+        <geometry>
+          <box>
+            <size>1.11 0.18 0.20</size>
+          </box>
+        </geometry>
+        <material>
+          <diffuse>0.8 0.8 0.8 1</diffuse>
+          <specular>0.2 0.2 0.2 1</specular>
+        </material>
+      </visual>
+      <collision name="left_float_collision">
+        <pose>0 0.30 0.10 0 0 0</pose>
+        <geometry>
+          <box>
+            <size>1.11 0.18 0.20</size>
+          </box>
+        </geometry>
+      </collision>
+
+      <!-- Sağ gövde (float) -->
+      <visual name="right_float_visual">
+        <pose>0 -0.30 0.10 0 0 0</pose>
+        <geometry>
+          <box>
+            <size>1.11 0.18 0.20</size>
+          </box>
+        </geometry>
+        <material>
+          <diffuse>0.8 0.8 0.8 1</diffuse>
+          <specular>0.2 0.2 0.2 1</specular>
+        </material>
+      </visual>
+      <collision name="right_float_collision">
+        <pose>0 -0.30 0.10 0 0 0</pose>
+        <geometry>
+          <box>
+            <size>1.11 0.18 0.20</size>
+          </box>
+        </geometry>
+      </collision>
+
+      <!-- Üst platform (deck) -->
+      <visual name="deck_visual">
+        <pose>0 0 0.30 0 0 0</pose>
+        <geometry>
+          <box>
+            <size>0.80 0.65 0.03</size>
+          </box>
+        </geometry>
+        <material>
+          <diffuse>0.2 0.3 0.4 1</diffuse>
+          <specular>0.1 0.1 0.1 1</specular>
+        </material>
+      </visual>
+      <collision name="deck_collision">
+        <pose>0 0 0.30 0 0 0</pose>
+        <geometry>
+          <box>
+            <size>0.80 0.65 0.03</size>
+          </box>
+        </geometry>
+      </collision>
+
+      <!-- GPS sensörü -->
+      <sensor name="gps_sensor" type="navsat">
+        <pose>-0.35 0 0.35 0 0 0</pose>
+        <always_on>true</always_on>
+        <update_rate>10</update_rate>
+        <gps/>
+      </sensor>
+
+      <!-- IMU sensörü -->
+      <sensor name="imu_sensor" type="imu">
+        <pose>0 0 0.25 0 0 0</pose>
+        <always_on>true</always_on>
+        <update_rate>100</update_rate>
+        <imu>
+          <angular_velocity>
+            <x><noise type="gaussian"><mean>0</mean><stddev>0.009</stddev></noise></x>
+            <y><noise type="gaussian"><mean>0</mean><stddev>0.009</stddev></noise></y>
+            <z><noise type="gaussian"><mean>0</mean><stddev>0.009</stddev></noise></z>
+          </angular_velocity>
+          <linear_acceleration>
+            <x><noise type="gaussian"><mean>0</mean><stddev>0.021</stddev></noise></x>
+            <y><noise type="gaussian"><mean>0</mean><stddev>0.021</stddev></noise></y>
+            <z><noise type="gaussian"><mean>0</mean><stddev>0.021</stddev></noise></z>
+          </linear_acceleration>
+          <orientation_reference_frame>
+            <localization>ENU</localization>
+          </orientation_reference_frame>
+        </imu>
+      </sensor>
+
+      <!-- Kamera (RealSense D456 benzeri) -->
+      <sensor name="front_camera" type="camera">
+        <pose>0.50 0 0.32 0 0 0</pose>
+        <camera>
+          <horizontal_fov>1.047</horizontal_fov>
+          <image>
+            <width>640</width>
+            <height>480</height>
+            <format>R8G8B8</format>
+          </image>
+          <clip>
+            <near>0.1</near>
+            <far>100</far>
+          </clip>
+        </camera>
+        <always_on>true</always_on>
+        <update_rate>30</update_rate>
+      </sensor>
+
+      <!-- LiDAR (RPLiDAR S3 benzeri, 2D 360°) -->
+      <sensor name="lidar_sensor" type="gpu_ray">
+        <pose>0 0 0.45 0 0 0</pose>
+        <ray>
+          <scan>
+            <horizontal>
+              <samples>720</samples>
+              <resolution>1</resolution>
+              <min_angle>-3.14159</min_angle>
+              <max_angle>3.14159</max_angle>
+            </horizontal>
+            <vertical>
+              <samples>1</samples>
+              <resolution>1</resolution>
+              <min_angle>0</min_angle>
+              <max_angle>0</max_angle>
+            </vertical>
+          </scan>
+          <range>
+            <min>0.15</min>
+            <max>25.0</max>
+            <resolution>0.01</resolution>
+          </range>
+        </ray>
+        <always_on>true</always_on>
+        <update_rate>10</update_rate>
+        <visualize>true</visualize>
+      </sensor>
+    </link>
+
+    <!-- Sol itki muhafazası -->
+    <link name="left_housing_link">
+      <pose>-0.50 0.30 0.0 0 0 0</pose>
+      <inertial>
+        <mass>1</mass>
+        <inertia>
+          <ixx>0.002</ixx><ixy>0</ixy><ixz>0</ixz>
+          <iyy>0.002</iyy><iyz>0</iyz>
+          <izz>0.001</izz>
+        </inertia>
+      </inertial>
+      <visual name="left_housing_visual">
+        <geometry>
+          <cylinder>
+            <length>0.15</length>
+            <radius>0.04</radius>
+          </cylinder>
+        </geometry>
+        <material>
+          <diffuse>0.1 0.1 0.1 1</diffuse>
+        </material>
+      </visual>
+      <collision name="left_housing_collision">
+        <geometry>
+          <cylinder>
+            <length>0.15</length>
+            <radius>0.04</radius>
+          </cylinder>
+        </geometry>
+      </collision>
+    </link>
+
+    <!-- Sol pervane -->
+    <link name="left_prop_link">
+      <pose>-0.58 0.30 0.0 0 0 0</pose>
+      <inertial>
+        <mass>0.2</mass>
+        <inertia>
+          <ixx>0.0001</ixx><ixy>0</ixy><ixz>0</ixz>
+          <iyy>0.0001</iyy><iyz>0</iyz>
+          <izz>0.0002</izz>
+        </inertia>
+      </inertial>
+      <visual name="left_prop_visual">
+        <geometry>
+          <cylinder>
+            <length>0.02</length>
+            <radius>0.06</radius>
+          </cylinder>
+        </geometry>
+        <material>
+          <diffuse>0.9 0.9 0.9 1</diffuse>
+        </material>
+      </visual>
+      <collision name="left_prop_collision">
+        <geometry>
+          <cylinder>
+            <length>0.02</length>
+            <radius>0.06</radius>
+          </cylinder>
+        </geometry>
+      </collision>
+    </link>
+
+    <!-- Sağ itki muhafazası -->
+    <link name="right_housing_link">
+      <pose>-0.50 -0.30 0.0 0 0 0</pose>
+      <inertial>
+        <mass>1</mass>
+        <inertia>
+          <ixx>0.002</ixx><ixy>0</ixy><ixz>0</ixz>
+          <iyy>0.002</iyy><iyz>0</iyz>
+          <izz>0.001</izz>
+        </inertia>
+      </inertial>
+      <visual name="right_housing_visual">
+        <geometry>
+          <cylinder>
+            <length>0.15</length>
+            <radius>0.04</radius>
+          </cylinder>
+        </geometry>
+        <material>
+          <diffuse>0.1 0.1 0.1 1</diffuse>
+        </material>
+      </visual>
+      <collision name="right_housing_collision">
+        <geometry>
+          <cylinder>
+            <length>0.15</length>
+            <radius>0.04</radius>
+          </cylinder>
+        </geometry>
+      </collision>
+    </link>
+
+    <!-- Sağ pervane -->
+    <link name="right_prop_link">
+      <pose>-0.58 -0.30 0.0 0 0 0</pose>
+      <inertial>
+        <mass>0.2</mass>
+        <inertia>
+          <ixx>0.0001</ixx><ixy>0</ixy><ixz>0</ixz>
+          <iyy>0.0001</iyy><iyz>0</iyz>
+          <izz>0.0002</izz>
+        </inertia>
+      </inertial>
+      <visual name="right_prop_visual">
+        <geometry>
+          <cylinder>
+            <length>0.02</length>
+            <radius>0.06</radius>
+          </cylinder>
+        </geometry>
+        <material>
+          <diffuse>0.9 0.9 0.9 1</diffuse>
+        </material>
+      </visual>
+      <collision name="right_prop_collision">
+        <geometry>
+          <cylinder>
+            <length>0.02</length>
+            <radius>0.06</radius>
+          </cylinder>
+        </geometry>
+      </collision>
+    </link>
+
+    <!-- Joint'ler -->
+    <joint name="left_housing_joint" type="fixed">
+      <parent>base_link</parent>
+      <child>left_housing_link</child>
+    </joint>
+
+    <joint name="left_prop_joint" type="revolute">
+      <pose>-0.58 0.30 0.0 0 0 0</pose>
+      <parent>left_housing_link</parent>
+      <child>left_prop_link</child>
+      <axis>
+        <xyz>1 0 0</xyz>
+        <limit>
+          <lower>-100</lower>
+          <upper>100</upper>
+          <effort>100</effort>
+        </limit>
+        <dynamics>
+          <friction>1.0</friction>
+          <damping>5.0</damping>
+        </dynamics>
+      </axis>
+    </joint>
+
+    <joint name="right_housing_joint" type="fixed">
+      <parent>base_link</parent>
+      <child>right_housing_link</child>
+    </joint>
+
+    <joint name="right_prop_joint" type="revolute">
+      <pose>-0.58 -0.30 0.0 0 0 0</pose>
+      <parent>right_housing_link</parent>
+      <child>right_prop_link</child>
+      <axis>
+        <xyz>-1 0 0</xyz>
+        <limit>
+          <lower>-100</lower>
+          <upper>100</upper>
+          <effort>100</effort>
+        </limit>
+        <dynamics>
+          <friction>1.0</friction>
+          <damping>5.0</damping>
+        </dynamics>
+      </axis>
+    </joint>
+
+    <!-- VRX Surface plugin: Sol gövde -->
+    <plugin filename="libSurface.so" name="vrx::Surface">
+      <link_name>base_link</link_name>
+      <hull_length>1.11</hull_length>
+      <hull_radius>0.115</hull_radius>
+      <fluid_level>0</fluid_level>
+      <fluid_density>1025.9</fluid_density>
+      <points>
+        <point>0.55 0.30 0.0</point>
+        <point>-0.55 0.30 0.0</point>
+      </points>
+      <wavefield>
+        <topic>/vrx/wavefield/parameters</topic>
+      </wavefield>
+    </plugin>
+
+    <!-- VRX Surface plugin: Sağ gövde -->
+    <plugin filename="libSurface.so" name="vrx::Surface">
+      <link_name>base_link</link_name>
+      <hull_length>1.11</hull_length>
+      <hull_radius>0.115</hull_radius>
+      <fluid_level>0</fluid_level>
+      <fluid_density>1025.9</fluid_density>
+      <points>
+        <point>0.55 -0.30 0.0</point>
+        <point>-0.55 -0.30 0.0</point>
+      </points>
+      <wavefield>
+        <topic>/vrx/wavefield/parameters</topic>
+      </wavefield>
+    </plugin>
+
+    <!-- VRX Simple Hydrodynamics -->
+    <plugin filename="libSimpleHydrodynamics.so" name="vrx::SimpleHydrodynamics">
+      <link_name>base_link</link_name>
+      <xDotU>0.0</xDotU>
+      <yDotV>0.0</yDotV>
+      <nDotR>0.0</nDotR>
+      <xU>18.56</xU>
+      <xUU>18.56</xUU>
+      <yV>36.45</yV>
+      <yVV>10.93</yVV>
+      <zW>88.23</zW>
+      <kP>18.0</kP>
+      <kPP>36.0</kPP>
+      <mQ>36.0</mQ>
+      <mQQ>35.0</mQQ>
+      <nR>8.0</nR>
+      <nRR>4.0</nRR>
+    </plugin>
+
+    <!-- Gazebo Thruster: Sol -->
+    <plugin filename="gz-sim-thruster-system" name="gz::sim::systems::Thruster">
+      <joint_name>left_prop_joint</joint_name>
+      <thrust_coefficient>0.0008</thrust_coefficient>
+      <fluid_density>1025.9</fluid_density>
+      <propeller_diameter>0.10</propeller_diameter>
+      <velocity_control>false</velocity_control>
+      <p_gain>0.0</p_gain>
+    </plugin>
+
+    <!-- Gazebo Thruster: Sağ -->
+    <plugin filename="gz-sim-thruster-system" name="gz::sim::systems::Thruster">
+      <joint_name>right_prop_joint</joint_name>
+      <thrust_coefficient>0.0008</thrust_coefficient>
+      <fluid_density>1025.9</fluid_density>
+      <propeller_diameter>0.10</propeller_diameter>
+      <velocity_control>false</velocity_control>
+      <p_gain>0.0</p_gain>
+    </plugin>
+
+  </model>
+</sdf>

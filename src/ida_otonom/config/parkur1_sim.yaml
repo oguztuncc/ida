@@ -20,8 +20,6 @@ parkur2_sim_node:
     detection_fov_deg: 180.0
     detection_topic: /perception/buoy_detections_raw
     course_width_m: 8.82
-    vehicle_width_m: 0.76
-    vehicle_length_m: 1.11
     buoy_radius_m: 0.15
 
 mission_manager_node:
@@ -31,6 +29,9 @@ mission_manager_node:
 gps_guidance_node:
   ros__parameters:
     arrival_radius_m: 1.0
+    use_route_lookahead: false
+    route_lookahead_m: 2.0
+    route_lookahead_cross_turns: false
 
 geofence_monitor_node:
   ros__parameters:
@@ -44,12 +45,32 @@ geofence_monitor_node:
 controller_node:
   ros__parameters:
     kp_heading: 0.020
-    max_linear_speed: 0.32
-    max_angular_speed: 0.60
+    max_linear_speed: 0.20
+    max_angular_speed: 0.75
     use_planner_bearing: true
     planner_timeout_s: 0.8
     allow_reverse_planner_speed: false
     geofence_timeout_s: 0.8
+    turn_in_place_error_deg: 45.0
+    turn_in_place_speed_mps: 0.0
+    preturn_enabled: false
+    preturn_distance_m: 5.0
+    preturn_turn_angle_deg: 45.0
+    preturn_speed_mps: 0.09
+    preturn_max_blend: 0.45
+    preturn_brake_distance_m: 0.7
+    preturn_brake_speed_mps: -0.03
+    waypoint_slowdown_distance_m: 4.0
+    waypoint_min_speed_mps: 0.03
+    waypoint_straight_brake_enabled: false
+    waypoint_straight_brake_distance_m: 2.0
+    waypoint_straight_brake_heading_error_deg: 180.0
+    waypoint_stop_turn_enabled: false
+    waypoint_stop_turn_distance_m: 1.1
+    waypoint_stop_turn_angle_deg: 35.0
+    waypoint_stop_turn_align_error_deg: 10.0
+    waypoint_stop_turn_depart_s: 1.2
+    waypoint_stop_turn_depart_speed_mps: 0.10
 
 safety_node:
   ros__parameters:
@@ -71,17 +92,14 @@ local_costmap_node:
 
 lidar_processor_node:
   ros__parameters:
-    collision_distance_m: 0.25
     sector_width_deg: 35.0
-    front_path_half_width_m: 0.90
-    vehicle_width_m: 0.76
-    vehicle_length_m: 1.11
     max_avoidance_angle_deg: 60.0
     min_avoidance_angle_deg: 30.0
     candidate_step_deg: 5.0
     candidate_sector_width_deg: 16.0
     avoidance_release_distance_m: 3.5
     latch_avoidance_direction: false
+    min_valid_range_m: 1.0
 
 course_memory_node:
   ros__parameters:
@@ -124,12 +142,10 @@ sensor_cross_validator_node:
 corridor_tracker_node:
   ros__parameters:
     lookahead_m: 5.0
-    lookahead_window_m: 4.0
+    lookahead_window_m: 2.0
     expected_corridor_width_m: 8.82
-    vehicle_width_m: 0.76
-    side_safety_margin_m: 0.35
     min_gate_width_m: 1.20
-    max_boundary_bearing_deg: 80.0
+    max_boundary_bearing_deg: 90.0
     min_boundary_range_m: 0.4
     max_boundary_range_m: 15.0
     center_smoothing_alpha: 0.35
@@ -140,22 +156,18 @@ parkur2_planner_node:
   ros__parameters:
     max_speed_mps: 0.28
     approach_speed_mps: 0.14
-    danger_distance_m: 0.65
     avoid_start_distance_m: 5.0
-    emergency_stop_distance_m: 0.25
     contact_recovery_enabled: true
     contact_recovery_distance_m: 0.20
     recovery_backoff_duration_s: 0.8
     recovery_backoff_speed_mps: -0.10
     recovery_turn_bearing_deg: 20.0
-    safe_clearance_m: 0.85
     max_relative_bearing_deg: 45.0
     max_pass_bearing_deg: 32.0
     max_return_bearing_deg: 25.0
-    corridor_min_confidence: 0.45
+    corridor_min_confidence: 0.35
     corridor_keepout_margin_m: 0.85
     obstacle_pass_margin_m: 0.85
-    min_pass_gap_width_m: 0.60
     equal_gap_epsilon_m: 0.20
     path_block_margin_m: 1.10
     pass_lookahead_m: 4.5
@@ -173,7 +185,7 @@ parkur2_planner_node:
     scan_duration_s: 0.0
     scan_spin_angle_deg: 0.0
     scan_cooldown_s: 0.0
-    final_approach_distance_m: 12.0
+    final_approach_distance_m: 6.0
     waypoint_bias_weight: 0.25
 
 sim_visualizer_node:

@@ -1,0 +1,24 @@
+# IDA Katamaran Vehicle Profile
+# Tek dogruluk kaynagi: arac boyutlari ve guvenlik parametreleri
+# Bu profil SDF modeli ile uyumlu olmali; gercek donanimda fark varsa
+# SDF guncellenmeli veya ayri bir profil (ida_katamaran_real.yaml) olusturulmali.
+
+vehicle:
+  name: "ida_katamaran"
+  length_m: 1.11
+  beam_m: 0.76
+  thruster_track_m: 0.60
+  lidar_x_m: 0.0
+  lidar_z_m: 0.45
+  mass_kg: 32.6
+  max_linear_speed_mps: 0.35
+  max_angular_speed_radps: 0.6
+
+safety:
+  side_clearance_m: 0.35
+  front_clearance_m: 0.85
+  emergency_stop_m: 0.45
+  danger_m: 0.60
+  avoid_start_m: 5.0
+  min_pass_gap_m: 1.50
+  collision_distance_m: 1.20

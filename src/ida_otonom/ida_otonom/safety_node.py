@@ -3,7 +3,7 @@ from rclpy.node import Node
 from geometry_msgs.msg import Twist
 from std_msgs.msg import Bool, String
 
-from .common import to_json
+from .schemas import SafetyStatus
 
 
 class SafetyNode(Node):
@@ -90,19 +90,13 @@ class SafetyNode(Node):
             self.safe_pub.publish(self.last_cmd)
 
         self.status_pub.publish(
-            String(
-                data=to_json(
-                    {
-                        "kill_active": self.kill_active,
-                        "physical_kill_active": self.physical_kill_active,
-                        "latch_kill": self.latch_kill,
-                        "block_reset_on_physical_kill": (
-                            self.block_reset_on_physical_kill
-                        ),
-                        "command_timed_out": command_timed_out,
-                    }
-                )
-            )
+            SafetyStatus(
+                kill_active=self.kill_active,
+                physical_kill_active=self.physical_kill_active,
+                latch_kill=self.latch_kill,
+                block_reset_on_physical_kill=self.block_reset_on_physical_kill,
+                command_timed_out=command_timed_out,
+            ).to_msg()
         )
 
 

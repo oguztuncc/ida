@@ -10,6 +10,7 @@ from sensor_msgs.msg import Imu, NavSatFix
 from std_msgs.msg import Float32, String
 
 from .common import default_record_dir, from_json
+from .schemas import PlannerStatus
 
 
 class LoggerNode(Node):
@@ -153,10 +154,8 @@ class LoggerNode(Node):
         self.yaw_rate_setpoint = float(data.get("yaw_rate_setpoint", 0.0))
 
     def planner_status_cb(self, msg: String) -> None:
-        try:
-            self.planner_status = from_json(msg.data)
-        except Exception:
-            self.planner_status = {}
+        parsed = PlannerStatus.parse(msg)
+        self.planner_status = parsed.__dict__ if parsed is not None else {}
 
     def loop(self) -> None:
         self.writer.writerow(

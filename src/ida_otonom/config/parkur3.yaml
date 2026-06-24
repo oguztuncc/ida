@@ -11,7 +11,7 @@ mission_manager_node:
 
 gps_guidance_node:
   ros__parameters:
-    arrival_radius_m: 2.0
+    arrival_radius_m: 1.0
 
 geofence_monitor_node:
   ros__parameters:
