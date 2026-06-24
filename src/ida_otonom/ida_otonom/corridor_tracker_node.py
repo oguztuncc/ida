@@ -90,7 +90,8 @@ class CorridorTrackerNode(Node):
         )
 
     def _usable_boundary(self, buoy: dict) -> bool:
-        if buoy.get("semantic") != "course_boundary_candidate":
+        semantic = buoy.get("semantic", "")
+        if semantic != "course_boundary_candidate":
             return False
         range_m = buoy.get("range_m")
         bearing = buoy.get("bearing_deg")

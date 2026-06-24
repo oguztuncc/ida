@@ -99,13 +99,13 @@ class ColorReceiverNode(Node):
     def _set_color(self, color: str) -> None:
         """Hedef rengi ayarla."""
         if self.mission_started:
-            self.get_logger().warn(
+            self.get_logger().warning(
                 "Target color update ignored after mission start"
             )
             return
         validated = self._validate_color(color)
         if validated is None:
-            self.get_logger().warn(
+            self.get_logger().warning(
                 f"Invalid color '{color}'. Valid: {self.valid_colors}"
             )
             return

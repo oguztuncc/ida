@@ -1,0 +1,307 @@
+{
+  "mission_name": "parkur1_zikzak",
+  "origin": {
+    "lat": 40.1181,
+    "lon": 26.4081
+  },
+  "waypoints": [
+    {
+      "lat": 40.1181,
+      "lon": 26.4081
+    },
+    {
+      "lat": 40.1181539,
+      "lon": 26.408194
+    },
+    {
+      "lat": 40.118118,
+      "lon": 26.408288
+    },
+    {
+      "lat": 40.1181719,
+      "lon": 26.4083819
+    },
+    {
+      "lat": 40.1181359,
+      "lon": 26.4084759
+    },
+    {
+      "lat": 40.1181898,
+      "lon": 26.4085699
+    },
+    {
+      "lat": 40.1181449,
+      "lon": 26.4086639
+    },
+    {
+      "lat": 40.1182078,
+      "lon": 26.4087578
+    }
+  ],
+  "route": [
+    [
+      0.0,
+      0.0
+    ],
+    [
+      8.0,
+      6.0
+    ],
+    [
+      16.0,
+      2.0
+    ],
+    [
+      24.0,
+      8.0
+    ],
+    [
+      32.0,
+      4.0
+    ],
+    [
+      40.0,
+      10.0
+    ],
+    [
+      48.04,
+      4.99
+    ],
+    [
+      56.0,
+      12.0
+    ]
+  ],
+  "local_waypoints": [
+    [
+      0.0,
+      0.0
+    ],
+    [
+      8.0,
+      6.0
+    ],
+    [
+      16.0,
+      2.0
+    ],
+    [
+      24.0,
+      8.0
+    ],
+    [
+      32.0,
+      4.0
+    ],
+    [
+      40.0,
+      10.0
+    ],
+    [
+      48.0,
+      5.0
+    ],
+    [
+      56.0,
+      12.0
+    ]
+  ],
+  "boundaries": [
+    {
+      "id": "parkur1_course_left_0",
+      "kind": "course_boundary",
+      "class_name": "course_buoy",
+      "east_m": -0.47,
+      "north_m": 5.16
+    },
+    {
+      "id": "parkur1_course_right_0",
+      "kind": "course_boundary",
+      "class_name": "course_buoy",
+      "east_m": 4.9,
+      "north_m": -2.33
+    },
+    {
+      "id": "parkur1_course_left_1",
+      "kind": "course_boundary",
+      "class_name": "course_buoy",
+      "east_m": 3.19,
+      "north_m": 8.46
+    },
+    {
+      "id": "parkur1_course_right_1",
+      "kind": "course_boundary",
+      "class_name": "course_buoy",
+      "east_m": 8.42,
+      "north_m": 0.99
+    },
+    {
+      "id": "parkur1_course_left_2",
+      "kind": "course_boundary",
+      "class_name": "course_buoy",
+      "east_m": 11.98,
+      "north_m": 9.14
+    },
+    {
+      "id": "parkur1_course_left_3",
+      "kind": "course_boundary",
+      "class_name": "course_buoy",
+      "east_m": 16.56,
+      "north_m": -3.92
+    },
+    {
+      "id": "parkur1_course_right_3",
+      "kind": "course_boundary",
+      "class_name": "course_buoy",
+      "east_m": 11.97,
+      "north_m": -0.88
+    },
+    {
+      "id": "parkur1_course_left_4",
+      "kind": "course_boundary",
+      "class_name": "course_buoy",
+      "east_m": 15.41,
+      "north_m": 6.67
+    },
+    {
+      "id": "parkur1_course_right_4",
+      "kind": "course_boundary",
+      "class_name": "course_buoy",
+      "east_m": 21.01,
+      "north_m": -0.3
+    },
+    {
+      "id": "parkur1_course_left_5",
+      "kind": "course_boundary",
+      "class_name": "course_buoy",
+      "east_m": 19.22,
+      "north_m": 10.23
+    },
+    {
+      "id": "parkur1_course_right_5",
+      "kind": "course_boundary",
+      "class_name": "course_buoy",
+      "east_m": 24.95,
+      "north_m": 2.94
+    },
+    {
+      "id": "parkur1_course_left_6",
+      "kind": "course_boundary",
+      "class_name": "course_buoy",
+      "east_m": 28.33,
+      "north_m": 11.23
+    },
+    {
+      "id": "parkur1_course_right_6",
+      "kind": "course_boundary",
+      "class_name": "course_buoy",
+      "east_m": 23.7,
+      "north_m": 13.43
+    },
+    {
+      "id": "parkur1_course_left_7",
+      "kind": "course_boundary",
+      "class_name": "course_buoy",
+      "east_m": 32.31,
+      "north_m": -1.36
+    },
+    {
+      "id": "parkur1_course_right_7",
+      "kind": "course_boundary",
+      "class_name": "course_buoy",
+      "east_m": 28.12,
+      "north_m": 1.4
+    },
+    {
+      "id": "parkur1_course_left_8",
+      "kind": "course_boundary",
+      "class_name": "course_buoy",
+      "east_m": 31.66,
+      "north_m": 8.69
+    },
+    {
+      "id": "parkur1_course_right_8",
+      "kind": "course_boundary",
+      "class_name": "course_buoy",
+      "east_m": 36.6,
+      "north_m": 1.67
+    },
+    {
+      "id": "parkur1_course_left_9",
+      "kind": "course_boundary",
+      "class_name": "course_buoy",
+      "east_m": 35.29,
+      "north_m": 11.85
+    },
+    {
+      "id": "parkur1_course_right_9",
+      "kind": "course_boundary",
+      "class_name": "course_buoy",
+      "east_m": 39.6,
+      "north_m": 14.53
+    },
+    {
+      "id": "parkur1_course_left_10",
+      "kind": "course_boundary",
+      "class_name": "course_buoy",
+      "east_m": 44.37,
+      "north_m": 12.95
+    },
+    {
+      "id": "parkur1_course_right_10",
+      "kind": "course_boundary",
+      "class_name": "course_buoy",
+      "east_m": 39.7,
+      "north_m": 5.04
+    },
+    {
+      "id": "parkur1_course_left_11",
+      "kind": "course_boundary",
+      "class_name": "course_buoy",
+      "east_m": 48.29,
+      "north_m": -0.36
+    },
+    {
+      "id": "parkur1_course_right_11",
+      "kind": "course_boundary",
+      "class_name": "course_buoy",
+      "east_m": 44.06,
+      "north_m": 2.79
+    },
+    {
+      "id": "parkur1_course_left_12",
+      "kind": "course_boundary",
+      "class_name": "course_buoy",
+      "east_m": 47.38,
+      "north_m": 9.92
+    },
+    {
+      "id": "parkur1_course_right_12",
+      "kind": "course_boundary",
+      "class_name": "course_buoy",
+      "east_m": 52.97,
+      "north_m": 3.67
+    },
+    {
+      "id": "parkur1_course_left_13",
+      "kind": "course_boundary",
+      "class_name": "course_buoy",
+      "east_m": 51.52,
+      "north_m": 13.42
+    },
+    {
+      "id": "parkur1_course_right_13",
+      "kind": "course_boundary",
+      "class_name": "course_buoy",
+      "east_m": 57.2,
+      "north_m": 6.67
+    },
+    {
+      "id": "boundary_27",
+      "kind": "course_boundary",
+      "class_name": "course_buoy",
+      "east_m": 7.27,
+      "north_m": 10.59
+    }
+  ]
+}

@@ -1,8 +1,9 @@
 parkur2_sim_node:
   ros__parameters:
+    world_variant: custom
     initial_lat: 40.1181000
     initial_lon: 26.4081000
-    initial_heading_deg: 45.0
+    initial_heading_deg: 73.0
     update_rate_hz: 20.0
     scan_rate_hz: 10.0
     detection_rate_hz: 8.0
@@ -16,7 +17,10 @@ parkur2_sim_node:
     detection_range_max_m: 14.0
     detection_fov_deg: 180.0
     detection_topic: /perception/buoy_detections_raw
-    course_width_m: 8.82
+    course_width_m: 8.12
+    vehicle_width_m: 0.76
+    vehicle_length_m: 1.11
+    buoy_radius_m: 0.15
 
 mission_manager_node:
   ros__parameters:
@@ -65,8 +69,11 @@ local_costmap_node:
 
 lidar_processor_node:
   ros__parameters:
-    collision_distance_m: 0.90
+    collision_distance_m: 1.00
     sector_width_deg: 40.0
+    front_path_half_width_m: 1.90
+    vehicle_width_m: 0.76
+    vehicle_length_m: 1.11
     max_avoidance_angle_deg: 65.0
     min_avoidance_angle_deg: 40.0
     candidate_step_deg: 5.0
@@ -115,52 +122,58 @@ sensor_cross_validator_node:
 corridor_tracker_node:
   ros__parameters:
     lookahead_m: 3.0
-    expected_corridor_width_m: 8.82
-    vehicle_width_m: 1.10
-    side_safety_margin_m: 0.35
+    expected_corridor_width_m: 8.12
+    vehicle_width_m: 1.50
+    side_safety_margin_m: 1.00
     min_gate_width_m: 2.20
     max_boundary_bearing_deg: 75.0
     min_boundary_range_m: 0.4
-    max_boundary_range_m: 10.0
-    center_smoothing_alpha: 0.25
-    max_center_step_m: 0.6
-    obstacle_avoidance_enabled: false
+    max_boundary_range_m: 14.0
+    center_smoothing_alpha: 0.20
+    max_center_step_m: 0.4
+    obstacle_avoidance_enabled: true
     obstacle_avoidance_range_m: 8.0
     obstacle_avoidance_margin_m: 0.80
-    obstacle_max_offset_m: 1.50
+    obstacle_max_offset_m: 0.80
 
 parkur2_planner_node:
   ros__parameters:
-    max_speed_mps: 0.30
+    max_speed_mps: 0.28
     approach_speed_mps: 0.15
-    danger_distance_m: 0.70
-    avoid_start_distance_m: 3.20
-    emergency_stop_distance_m: 0.45
+    danger_distance_m: 1.30
+    emergency_stop_distance_m: 1.00
     contact_recovery_enabled: true
-    contact_recovery_distance_m: 0.30
+    contact_recovery_distance_m: 1.00
     recovery_backoff_duration_s: 1.2
     recovery_backoff_speed_mps: -0.12
     recovery_turn_bearing_deg: 25.0
-    safe_clearance_m: 1.50
+    safe_clearance_m: 1.90
     max_relative_bearing_deg: 35.0
-    max_pass_bearing_deg: 25.0
-    max_return_bearing_deg: 18.0
+    max_pass_bearing_deg: 32.0
+    max_return_bearing_deg: 25.0
     corridor_min_confidence: 0.45
-    corridor_keepout_margin_m: 1.20
-    obstacle_pass_margin_m: 1.20
-    pass_lookahead_m: 6.0
-    return_lookahead_m: 6.0
-    pass_min_duration_s: 1.5
-    pass_release_after_lost_s: 1.0
-    corridor_coast_s: 1.2
-    bearing_rate_limit_degps: 70.0
+    corridor_keepout_margin_m: 0.60
+    obstacle_pass_margin_m: 0.60
+    min_pass_gap_width_m: 2.20
+    path_block_margin_m: 1.20
+    pass_lookahead_m: 4.5
+    return_lookahead_m: 8.0
+    pass_min_duration_s: 2.0
+    pass_release_after_lost_s: 2.0
+    corridor_coast_s: 2.0
+    bearing_rate_limit_degps: 40.0
     sensor_timeout_s: 1.0
-    scan_before_bypass: true
-    scan_duration_s: 1.0
-    scan_spin_angle_deg: 35.0
-    scan_cooldown_s: 1.5
+    require_corridor_for_motion: false
+    corridor_search_angle_deg: 0.0
+    waypoint_blend_factor: 0.0
+    avoid_start_distance_m: 6.0
+    expected_corridor_width_m: 8.12
+    scan_before_bypass: false
+    scan_duration_s: 0.0
+    scan_spin_angle_deg: 0.0
+    scan_cooldown_s: 0.0
     final_approach_distance_m: 14.0
-    waypoint_bias_weight: 0.20
+    waypoint_bias_weight: 0.4
 
 sim_visualizer_node:
   ros__parameters:
@@ -168,4 +181,4 @@ sim_visualizer_node:
     window_height: 760
     refresh_hz: 20.0
     trail_length: 3500
-    window_title: IDA Parkur-2 LiDAR Simulation
+    window_title: IDA Simulasyon

@@ -46,18 +46,17 @@ include_directories(
 )
 
 add_executable(sllidar_node	src/sllidar_node.cpp ${SLLIDAR_SDK_SRC})
-# target_link_libraries(sllidar_node ${ament_cmake_LIBRARIES})
-ament_target_dependencies(sllidar_node
-  rclcpp
-  std_srvs
-  sensor_msgs
+target_link_libraries(sllidar_node
+  rclcpp::rclcpp
+  sensor_msgs::sensor_msgs
+  std_srvs::std_srvs
 )
 
 add_executable(sllidar_client src/sllidar_client.cpp)
-ament_target_dependencies(sllidar_client
-  rclcpp
-  std_srvs
-  sensor_msgs
+target_link_libraries(sllidar_client
+  rclcpp::rclcpp
+  sensor_msgs::sensor_msgs
+  std_srvs::std_srvs
 )
 ################################################################################
 # Install

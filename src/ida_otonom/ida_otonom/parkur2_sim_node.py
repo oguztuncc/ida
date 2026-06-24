@@ -1,4 +1,7 @@
+import json
 import math
+import os
+import fcntl
 from dataclasses import dataclass
 
 import rclpy
@@ -7,7 +10,10 @@ from rclpy.node import Node
 from sensor_msgs.msg import LaserScan, NavSatFix
 from std_msgs.msg import Float32, String
 
-from .common import clamp, to_json
+from .common import clamp, package_share_path, to_json
+
+
+BUOY_RADIUS_M = 0.15
 
 
 @dataclass(frozen=True)
@@ -44,9 +50,16 @@ class Parkur2SimNode(Node):
         self.declare_parameter("detection_fov_deg", 110.0)
         self.declare_parameter("detection_topic", "/perception/buoy_detections")
         self.declare_parameter("world_variant", "parkur2")
-        self.declare_parameter("course_width_m", 8.82)
+        self.declare_parameter("course_width_m", 8.12)
+        self.declare_parameter("vehicle_width_m", 0.76)
+        self.declare_parameter("vehicle_length_m", 1.11)
         self.declare_parameter("course_jitter_m", 0.0)
         self.declare_parameter("include_obstacles", True)
+        self.declare_parameter("custom_world_path", "")
+        self.declare_parameter("enforce_single_instance", True)
+
+        self._single_instance_lock_file = None
+        self._acquire_single_instance_lock()
 
         self.origin_lat = float(self.get_parameter("initial_lat").value)
         self.origin_lon = float(self.get_parameter("initial_lon").value)
@@ -84,6 +97,16 @@ class Parkur2SimNode(Node):
             2.0,
             float(self.get_parameter("course_width_m").value),
         )
+        self.vehicle_width_m = max(
+            0.1,
+            float(self.get_parameter("vehicle_width_m").value),
+        )
+        self.vehicle_length_m = max(
+            0.1,
+            float(self.get_parameter("vehicle_length_m").value),
+        )
+        self.vehicle_half_width_m = self.vehicle_width_m / 2.0
+        self.vehicle_half_length_m = self.vehicle_length_m / 2.0
         self.course_jitter_m = max(
             0.0,
             float(self.get_parameter("course_jitter_m").value),
@@ -91,14 +114,23 @@ class Parkur2SimNode(Node):
         self.include_obstacles = bool(
             self.get_parameter("include_obstacles").value
         )
+        self.custom_world_path = str(
+            self.get_parameter("custom_world_path").value
+        )
+        self.spawn = None
 
         self.east_m = 0.0
         self.north_m = 0.0
         self.last_cmd = Twist()
         self.objects = self._build_world()
         self.visual_markers = self._build_visual_markers()
+        if self.spawn is not None:
+            self.east_m = float(self.spawn["east_m"])
+            self.north_m = float(self.spawn["north_m"])
+            if self.spawn.get("heading_deg") is not None:
+                self.heading_deg = float(self.spawn["heading_deg"]) % 360.0
         # Parkur 3: start in the middle of the 3 buoys
-        if self.world_variant == "parkur3":
+        if self.world_variant == "parkur3" and self.spawn is None:
             self.east_m = 0.0
             self.north_m = 0.0
 
@@ -151,12 +183,70 @@ class Parkur2SimNode(Node):
             f"{len(self.objects)} object(s), time_scale={self.time_scale:.1f}x"
         )
 
+    def _acquire_single_instance_lock(self) -> None:
+        if not bool(self.get_parameter("enforce_single_instance").value):
+            return
+        domain_id = os.environ.get("ROS_DOMAIN_ID", "default")
+        lock_path = f"/tmp/ida_otonom_sim_{domain_id}.lock"
+        lock_file = open(lock_path, "w", encoding="utf-8")
+        try:
+            fcntl.flock(lock_file, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError as exc:
+            lock_file.close()
+            self.get_logger().error(
+                "Another ida_otonom simulation is already running in this "
+                f"ROS_DOMAIN_ID ({domain_id}). Stop the old launch before "
+                "starting a new one."
+            )
+            raise RuntimeError("duplicate ida_otonom simulation") from exc
+        lock_file.seek(0)
+        lock_file.truncate()
+        lock_file.write(str(os.getpid()))
+        lock_file.flush()
+        self._single_instance_lock_file = lock_file
+
+    def _missions_dir(self) -> str:
+        return os.path.join(str(package_share_path()), "missions")
+
+    def _resolve_world_path(self, path: str) -> str:
+        if os.path.isabs(path):
+            return path
+        return os.path.join(self._missions_dir(), path)
+
     def _build_world(self) -> list[SimObject]:
+        if self.world_variant == "custom" and self.custom_world_path:
+            path = self._resolve_world_path(self.custom_world_path)
+        else:
+            candidates = [
+                os.path.join(self._missions_dir(), f"{self.world_variant}.json"),
+                os.path.join(
+                    self._missions_dir(),
+                    f"{self.world_variant}_sim.json",
+                ),
+            ]
+            path = next(
+                (candidate for candidate in candidates if os.path.isfile(candidate)),
+                candidates[0],
+            )
+
+        if os.path.isfile(path):
+            try:
+                return self._build_world_from_json(path)
+            except Exception as exc:
+                self.spawn = None
+                self.get_logger().error(
+                    f"Failed to load world from {path}: {exc}. Falling back to legacy build."
+                )
+        else:
+            self.get_logger().warning(
+                f"World JSON not found at {path}. Falling back to legacy build."
+            )
+
         if self.world_variant == "parkur1":
-            return self._build_parkur1_world()
+            return self._build_parkur1_world_legacy()
         if self.world_variant == "parkur3":
             return self._build_parkur3_world()
-        return self._build_parkur2_world()
+        return self._build_parkur2_world_legacy()
 
     def _build_visual_markers(self) -> list[SimObject]:
         if self.world_variant == "parkur2":
@@ -165,8 +255,8 @@ class Parkur2SimNode(Node):
                     "parkur2_finish_wp",
                     "finish_waypoint",
                     "finish_waypoint",
-                    55.0,
-                    48.0,
+                    60.0,
+                    9.0,
                     0.55,
                     120.0,
                     "#48d17a",
@@ -174,7 +264,210 @@ class Parkur2SimNode(Node):
             ]
         return []
 
-    def _build_parkur2_world(self) -> list[SimObject]:
+    def _build_world_from_json(self, path: str) -> list[SimObject]:
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+
+        objects: list[SimObject] = []
+        load_method = "explicit"
+        self.spawn = self._parse_spawn(data.get("spawn"))
+
+        # New format: explicit boundaries list (no automatic generation)
+        if "boundaries" in data:
+            for b in data.get("boundaries", []):
+                objects.append(
+                    SimObject(
+                        object_id=b["id"],
+                        kind=b.get("kind", "course_boundary"),
+                        class_name=b.get("class_name", "course_buoy"),
+                        east_m=float(b["east_m"]),
+                        north_m=float(b["north_m"]),
+                        radius_m=BUOY_RADIUS_M,
+                        hue_deg=float(b.get("hue_deg", 28.0)),
+                        color=b.get("color", "#ff8b2e"),
+                    )
+                )
+        elif "build_method" in data:
+            # Legacy format fallback
+            load_method = "legacy"
+            build_method = data.get("build_method", "station_pairs")
+            course_width = data.get("course_width_m", self.course_width_m)
+            jitter = data.get("course_jitter_m", self.course_jitter_m)
+            route = [tuple(p) for p in data.get("route", [])]
+
+            if build_method == "course_boundaries":
+                spacing = data.get("spacing_m", 7.0)
+                prefix = data.get("object_prefix", "course")
+                objects.extend(
+                    self._build_course_boundaries(
+                        route,
+                        spacing_m=spacing,
+                        object_prefix=prefix,
+                        course_width_m=course_width,
+                        course_jitter_m=jitter,
+                    )
+                )
+            elif build_method == "station_pairs":
+                stations = [tuple(p) for p in data.get("stations", [])]
+                objects.extend(
+                    self._build_station_pairs(
+                        route,
+                        stations,
+                        course_width_m=course_width,
+                    )
+                )
+            else:
+                self.get_logger().warning(f"Unknown build_method: {build_method}")
+
+        for obs in data.get("obstacles", []):
+            objects.append(
+                SimObject(
+                    object_id=obs["id"],
+                    kind=obs.get("kind", "obstacle"),
+                    class_name=obs.get("class_name", "obstacle_buoy"),
+                    east_m=float(obs["east_m"]),
+                    north_m=float(obs["north_m"]),
+                    radius_m=BUOY_RADIUS_M,
+                    hue_deg=float(obs.get("hue_deg", 62.0)),
+                    color=obs.get("color", "#ffe15a"),
+                )
+            )
+
+        self.get_logger().info(
+            f"Loaded world from {path}: {len(objects)} objects ({load_method})"
+        )
+        return objects
+
+    def _parse_spawn(self, spawn) -> dict | None:
+        if not isinstance(spawn, dict):
+            return None
+        if "east_m" not in spawn or "north_m" not in spawn:
+            return None
+        try:
+            parsed = {
+                "east_m": float(spawn["east_m"]),
+                "north_m": float(spawn["north_m"]),
+            }
+            if spawn.get("heading_deg") is not None:
+                parsed["heading_deg"] = float(spawn["heading_deg"]) % 360.0
+        except (TypeError, ValueError):
+            self.get_logger().warning("Ignoring invalid spawn field in world JSON")
+            return None
+        return parsed
+
+    def _build_station_pairs(
+        self,
+        route: list[tuple[float, float]],
+        stations: list[tuple[float, float]],
+        course_width_m: float,
+    ) -> list[SimObject]:
+        objects = []
+        previous = route[0]
+        for index, center in enumerate(stations):
+            next_point = route[min(index // 2 + 1, len(route) - 1)]
+            dx = next_point[0] - previous[0]
+            dy = next_point[1] - previous[1]
+            length = max(math.hypot(dx, dy), 1e-6)
+            left_x = -dy / length
+            left_y = dx / length
+            offset = course_width_m / 2.0
+            for side, sign in (("left", 1.0), ("right", -1.0)):
+                east = center[0] + left_x * offset * sign
+                north = center[1] + left_y * offset * sign
+                objects.append(
+                    SimObject(
+                        object_id=f"course_{side}_{index}",
+                        kind="course_boundary",
+                        class_name="course_buoy",
+                        east_m=east,
+                        north_m=north,
+                        radius_m=BUOY_RADIUS_M,
+                        hue_deg=28.0,
+                        color="#ff8b2e",
+                    )
+                )
+            previous = center
+        return objects
+
+    def _build_course_boundaries(
+        self,
+        route: list[tuple[float, float]],
+        spacing_m: float,
+        object_prefix: str,
+        course_width_m: float,
+        course_jitter_m: float,
+    ) -> list[SimObject]:
+        objects = []
+        half_width = course_width_m / 2.0
+        station_index = 0
+        for start, end in zip(route, route[1:]):
+            dx = end[0] - start[0]
+            dy = end[1] - start[1]
+            length = math.hypot(dx, dy)
+            if length <= 1e-6:
+                continue
+            forward_x = dx / length
+            forward_y = dy / length
+            left_x = -forward_y
+            left_y = forward_x
+            count = max(1, int(round(length / max(spacing_m, 0.5))))
+            for index in range(count):
+                t = (index + 0.5) / count
+                center_east = start[0] + dx * t
+                center_north = start[1] + dy * t
+                for side, sign in (("left", 1.0), ("right", -1.0)):
+                    phase = station_index * 1.37 + (
+                        0.0 if sign > 0.0 else 2.1
+                    )
+                    lateral_jitter = math.sin(phase) * course_jitter_m
+                    forward_jitter = (
+                        math.cos(phase * 0.7) * course_jitter_m * 0.5
+                    )
+                    offset = max(1.0, half_width + lateral_jitter)
+                    east = (
+                        center_east
+                        + left_x * offset * sign
+                        + forward_x * forward_jitter
+                    )
+                    north = (
+                        center_north
+                        + left_y * offset * sign
+                        + forward_y * forward_jitter
+                    )
+                    objects.append(
+                        SimObject(
+                            object_id=f"{object_prefix}_{side}_{station_index}",
+                            kind="course_boundary",
+                            class_name="course_buoy",
+                            east_m=east,
+                            north_m=north,
+                            radius_m=BUOY_RADIUS_M,
+                            hue_deg=28.0,
+                            color="#ff8b2e",
+                        )
+                    )
+                station_index += 1
+        return objects
+
+    def _build_parkur1_world_legacy(self) -> list[SimObject]:
+        route = [
+            (0.0, 0.0),
+            (16.0, 15.0),
+            (34.0, 34.0),
+            (50.0, 56.0),
+            (67.0, 76.0),
+            (84.0, 94.0),
+            (101.0, 111.0),
+        ]
+        return self._build_course_boundaries(
+            route,
+            spacing_m=7.0,
+            object_prefix="parkur1_course",
+            course_width_m=self.course_width_m,
+            course_jitter_m=self.course_jitter_m,
+        )
+
+    def _build_parkur2_world_legacy(self) -> list[SimObject]:
         route = [
             (0.0, 0.0),
             (12.0, 12.0),
@@ -191,32 +484,11 @@ class Parkur2SimNode(Node):
             (45.0, 39.3),
             (53.0, 46.2),
         ]
-        objects = []
-        previous = route[0]
-        for index, center in enumerate(stations):
-            next_point = route[min(index // 2 + 1, len(route) - 1)]
-            dx = next_point[0] - previous[0]
-            dy = next_point[1] - previous[1]
-            length = max(math.hypot(dx, dy), 1e-6)
-            left_x = -dy / length
-            left_y = dx / length
-            offset = self.course_width_m / 2.0
-            for side, sign in (("left", 1.0), ("right", -1.0)):
-                east = center[0] + left_x * offset * sign
-                north = center[1] + left_y * offset * sign
-                objects.append(
-                    SimObject(
-                        object_id=f"course_{side}_{index}",
-                        kind="course_boundary",
-                        class_name="course_buoy",
-                        east_m=east,
-                        north_m=north,
-                        radius_m=0.35,
-                        hue_deg=28.0,
-                        color="#ff8b2e",
-                    )
-                )
-            previous = center
+        objects = self._build_station_pairs(
+            route,
+            stations,
+            course_width_m=self.course_width_m,
+        )
 
         if self.include_obstacles:
             objects.extend(
@@ -227,7 +499,7 @@ class Parkur2SimNode(Node):
                         "obstacle_buoy",
                         9.4,
                         8.4,
-                        0.70,
+                        0.15,
                         62.0,
                         "#ffe15a",
                     ),
@@ -237,7 +509,7 @@ class Parkur2SimNode(Node):
                         "obstacle_buoy",
                         32.0,
                         29.3,
-                        0.65,
+                        0.15,
                         62.0,
                         "#ffe15a",
                     ),
@@ -247,7 +519,7 @@ class Parkur2SimNode(Node):
                         "obstacle_buoy",
                         44.6,
                         37.0,
-                        0.70,
+                        0.15,
                         62.0,
                         "#ffe15a",
                     ),
@@ -255,32 +527,9 @@ class Parkur2SimNode(Node):
             )
         return objects
 
-    def _build_parkur1_world(self) -> list[SimObject]:
-        route = [
-            (0.0, 0.0),
-            (16.0, 15.0),
-            (34.0, 34.0),
-            (50.0, 56.0),
-            (67.0, 76.0),
-            (84.0, 94.0),
-            (101.0, 111.0),
-        ]
-        return self._build_course_boundaries(
-            route,
-            spacing_m=7.0,
-            object_prefix="parkur1_course",
-        )
-
     def _build_parkur3_world(self) -> list[SimObject]:
-        """
-        Parkur 3 colored target buoy world.
-
-        IDA başlangıçta durur, IHA'dan renk gelince o renkteki dubaya gider.
-        Dubalar yan yana, aralarında mesafe var.
-        """
         objects = []
-        spacing = 8.0  # dubalar arası mesafe
-        # 3 renkli duba - yan yana (IDA ortada başlar, dubalar 5m ileride)
+        spacing = 8.0
         colored_buoys = [
             {
                 "id": "red_buoy",
@@ -315,69 +564,11 @@ class Parkur2SimNode(Node):
                     class_name=f"{buoy['color']}_buoy",
                     east_m=buoy["east"],
                     north_m=buoy["north"],
-                    radius_m=0.40,
+                    radius_m=BUOY_RADIUS_M,
                     hue_deg=buoy["hue"],
                     color=buoy["hex"],
                 )
             )
-        return objects
-
-    def _build_course_boundaries(
-        self,
-        route: list[tuple[float, float]],
-        spacing_m: float,
-        object_prefix: str,
-    ) -> list[SimObject]:
-        objects = []
-        half_width = self.course_width_m / 2.0
-        station_index = 0
-        for start, end in zip(route, route[1:]):
-            dx = end[0] - start[0]
-            dy = end[1] - start[1]
-            length = math.hypot(dx, dy)
-            if length <= 1e-6:
-                continue
-            forward_x = dx / length
-            forward_y = dy / length
-            left_x = -forward_y
-            left_y = forward_x
-            count = max(1, int(round(length / max(spacing_m, 0.5))))
-            for index in range(count):
-                t = (index + 0.5) / count
-                center_east = start[0] + dx * t
-                center_north = start[1] + dy * t
-                for side, sign in (("left", 1.0), ("right", -1.0)):
-                    phase = station_index * 1.37 + (
-                        0.0 if sign > 0.0 else 2.1
-                    )
-                    lateral_jitter = math.sin(phase) * self.course_jitter_m
-                    forward_jitter = (
-                        math.cos(phase * 0.7) * self.course_jitter_m * 0.5
-                    )
-                    offset = max(1.0, half_width + lateral_jitter)
-                    east = (
-                        center_east
-                        + left_x * offset * sign
-                        + forward_x * forward_jitter
-                    )
-                    north = (
-                        center_north
-                        + left_y * offset * sign
-                        + forward_y * forward_jitter
-                    )
-                    objects.append(
-                        SimObject(
-                            object_id=f"{object_prefix}_{side}_{station_index}",
-                            kind="course_boundary",
-                            class_name="course_buoy",
-                            east_m=east,
-                            north_m=north,
-                            radius_m=0.35,
-                            hue_deg=28.0,
-                            color="#ff8b2e",
-                        )
-                    )
-                station_index += 1
         return objects
 
     def cmd_cb(self, msg: Twist) -> None:
@@ -436,6 +627,13 @@ class Parkur2SimNode(Node):
         forward = de * math.sin(heading) + dn * math.cos(heading)
         left = dn * math.sin(heading) - de * math.cos(heading)
         return forward, left
+
+    def _footprint_clearance(self, forward: float, left: float, radius: float) -> float:
+        dx = abs(forward) - self.vehicle_half_length_m
+        dy = abs(left) - self.vehicle_half_width_m
+        outside = math.hypot(max(dx, 0.0), max(dy, 0.0))
+        inside = min(max(dx, dy), 0.0)
+        return outside + inside - radius
 
     def _ray_hit_distance(
         self,
@@ -559,15 +757,16 @@ class Parkur2SimNode(Node):
     def publish_world(self) -> None:
         objects = []
         closest_clearance = None
+        closest_center_clearance = None
         closest_id = None
         for obj in self.objects:
             lat, lon = self._lat_lon(obj.east_m, obj.north_m)
-            clearance = (
-                math.hypot(obj.east_m - self.east_m, obj.north_m - self.north_m)
-                - obj.radius_m
-            )
+            forward, left = self._object_in_boat_frame(obj)
+            center_clearance = math.hypot(forward, left) - obj.radius_m
+            clearance = self._footprint_clearance(forward, left, obj.radius_m)
             if closest_clearance is None or clearance < closest_clearance:
                 closest_clearance = clearance
+                closest_center_clearance = center_clearance
                 closest_id = obj.object_id
             objects.append(
                 {
@@ -614,8 +813,11 @@ class Parkur2SimNode(Node):
                             "east_m": self.east_m,
                             "north_m": self.north_m,
                             "heading_deg": self.heading_deg,
+                            "vehicle_width_m": self.vehicle_width_m,
+                            "vehicle_length_m": self.vehicle_length_m,
                             "closest_object_id": closest_id,
                             "closest_clearance_m": closest_clearance,
+                            "closest_center_clearance_m": closest_center_clearance,
                             "collision": closest_clearance is not None
                             and closest_clearance <= 0.0,
                         },
@@ -628,7 +830,14 @@ class Parkur2SimNode(Node):
 
 def main(args=None) -> None:
     rclpy.init(args=args)
-    node = Parkur2SimNode()
-    rclpy.spin(node)
-    node.destroy_node()
-    rclpy.shutdown()
+    node = None
+    try:
+        node = Parkur2SimNode()
+        rclpy.spin(node)
+    except RuntimeError as exc:
+        if str(exc) != "duplicate ida_otonom simulation":
+            raise
+    finally:
+        if node is not None:
+            node.destroy_node()
+        rclpy.shutdown()

@@ -1,0 +1,374 @@
+{
+  "variant": "custom",
+  "origin": {
+    "lat": 40.1181,
+    "lon": 26.4081
+  },
+  "waypoints": [
+    {
+      "lat": 40.1181354,
+      "lon": 26.4095307
+    }
+  ],
+  "route": [],
+  "local_waypoints": [
+    [
+      121.79,
+      3.94
+    ]
+  ],
+  "boundaries": [
+    {
+      "id": "boundary_0",
+      "kind": "course_boundary",
+      "class_name": "course_buoy",
+      "east_m": -0.29,
+      "north_m": 3.62,
+      "radius_m": 0.15,
+      "hue_deg": 28.0,
+      "color": "#ff8b2e"
+    },
+    {
+      "id": "boundary_1",
+      "kind": "course_boundary",
+      "class_name": "course_buoy",
+      "east_m": 0.04,
+      "north_m": -10.84,
+      "radius_m": 0.15,
+      "hue_deg": 28.0,
+      "color": "#ff8b2e"
+    },
+    {
+      "id": "boundary_2",
+      "kind": "course_boundary",
+      "class_name": "course_buoy",
+      "east_m": 12.97,
+      "north_m": 2.15,
+      "radius_m": 0.15,
+      "hue_deg": 28.0,
+      "color": "#ff8b2e"
+    },
+    {
+      "id": "boundary_3",
+      "kind": "course_boundary",
+      "class_name": "course_buoy",
+      "east_m": 10.89,
+      "north_m": -14.05,
+      "radius_m": 0.15,
+      "hue_deg": 28.0,
+      "color": "#ff8b2e"
+    },
+    {
+      "id": "boundary_4",
+      "kind": "course_boundary",
+      "class_name": "course_buoy",
+      "east_m": 23.81,
+      "north_m": 1.08,
+      "radius_m": 0.15,
+      "hue_deg": 28.0,
+      "color": "#ff8b2e"
+    },
+    {
+      "id": "boundary_5",
+      "kind": "course_boundary",
+      "class_name": "course_buoy",
+      "east_m": 22.87,
+      "north_m": -16.26,
+      "radius_m": 0.15,
+      "hue_deg": 28.0,
+      "color": "#ff8b2e"
+    },
+    {
+      "id": "boundary_6",
+      "kind": "course_boundary",
+      "class_name": "course_buoy",
+      "east_m": 35.46,
+      "north_m": -0.2,
+      "radius_m": 0.15,
+      "hue_deg": 28.0,
+      "color": "#ff8b2e"
+    },
+    {
+      "id": "boundary_7",
+      "kind": "course_boundary",
+      "class_name": "course_buoy",
+      "east_m": 35.46,
+      "north_m": -17.74,
+      "radius_m": 0.15,
+      "hue_deg": 28.0,
+      "color": "#ff8b2e"
+    },
+    {
+      "id": "boundary_8",
+      "kind": "course_boundary",
+      "class_name": "course_buoy",
+      "east_m": 45.32,
+      "north_m": 1.8,
+      "radius_m": 0.15,
+      "hue_deg": 28.0,
+      "color": "#ff8b2e"
+    },
+    {
+      "id": "boundary_9",
+      "kind": "course_boundary",
+      "class_name": "course_buoy",
+      "east_m": 54.76,
+      "north_m": 5.48,
+      "radius_m": 0.15,
+      "hue_deg": 28.0,
+      "color": "#ff8b2e"
+    },
+    {
+      "id": "boundary_10",
+      "kind": "course_boundary",
+      "class_name": "course_buoy",
+      "east_m": 62.99,
+      "north_m": 8.23,
+      "radius_m": 0.15,
+      "hue_deg": 28.0,
+      "color": "#ff8b2e"
+    },
+    {
+      "id": "boundary_11",
+      "kind": "course_boundary",
+      "class_name": "course_buoy",
+      "east_m": 45.03,
+      "north_m": -17.2,
+      "radius_m": 0.15,
+      "hue_deg": 28.0,
+      "color": "#ff8b2e"
+    },
+    {
+      "id": "boundary_12",
+      "kind": "course_boundary",
+      "class_name": "course_buoy",
+      "east_m": 55.54,
+      "north_m": -12.65,
+      "radius_m": 0.15,
+      "hue_deg": 28.0,
+      "color": "#ff8b2e"
+    },
+    {
+      "id": "boundary_13",
+      "kind": "course_boundary",
+      "class_name": "course_buoy",
+      "east_m": 65.45,
+      "north_m": -8.69,
+      "radius_m": 0.15,
+      "hue_deg": 28.0,
+      "color": "#ff8b2e"
+    },
+    {
+      "id": "boundary_14",
+      "kind": "course_boundary",
+      "class_name": "course_buoy",
+      "east_m": 73.28,
+      "north_m": 8.04,
+      "radius_m": 0.15,
+      "hue_deg": 28.0,
+      "color": "#ff8b2e"
+    },
+    {
+      "id": "boundary_15",
+      "kind": "course_boundary",
+      "class_name": "course_buoy",
+      "east_m": 84.86,
+      "north_m": 5.83,
+      "radius_m": 0.15,
+      "hue_deg": 28.0,
+      "color": "#ff8b2e"
+    },
+    {
+      "id": "boundary_16",
+      "kind": "course_boundary",
+      "class_name": "course_buoy",
+      "east_m": 96.38,
+      "north_m": 4.22,
+      "radius_m": 0.15,
+      "hue_deg": 28.0,
+      "color": "#ff8b2e"
+    },
+    {
+      "id": "boundary_17",
+      "kind": "course_boundary",
+      "class_name": "course_buoy",
+      "east_m": 75.16,
+      "north_m": -9.64,
+      "radius_m": 0.15,
+      "hue_deg": 28.0,
+      "color": "#ff8b2e"
+    },
+    {
+      "id": "boundary_18",
+      "kind": "course_boundary",
+      "class_name": "course_buoy",
+      "east_m": 84.73,
+      "north_m": -11.38,
+      "radius_m": 0.15,
+      "hue_deg": 28.0,
+      "color": "#ff8b2e"
+    },
+    {
+      "id": "boundary_19",
+      "kind": "course_boundary",
+      "class_name": "course_buoy",
+      "east_m": 96.31,
+      "north_m": -14.19,
+      "radius_m": 0.15,
+      "hue_deg": 28.0,
+      "color": "#ff8b2e"
+    },
+    {
+      "id": "boundary_20",
+      "kind": "course_boundary",
+      "class_name": "course_buoy",
+      "east_m": 107.76,
+      "north_m": 8.71,
+      "radius_m": 0.15,
+      "hue_deg": 28.0,
+      "color": "#ff8b2e"
+    },
+    {
+      "id": "boundary_21",
+      "kind": "course_boundary",
+      "class_name": "course_buoy",
+      "east_m": 116.73,
+      "north_m": 12.19,
+      "radius_m": 0.15,
+      "hue_deg": 28.0,
+      "color": "#ff8b2e"
+    },
+    {
+      "id": "boundary_22",
+      "kind": "course_boundary",
+      "class_name": "course_buoy",
+      "east_m": 107.89,
+      "north_m": -11.71,
+      "radius_m": 0.15,
+      "hue_deg": 28.0,
+      "color": "#ff8b2e"
+    },
+    {
+      "id": "boundary_23",
+      "kind": "course_boundary",
+      "class_name": "course_buoy",
+      "east_m": 117.26,
+      "north_m": -8.03,
+      "radius_m": 0.15,
+      "hue_deg": 28.0,
+      "color": "#ff8b2e"
+    }
+  ],
+  "obstacles": [
+    {
+      "id": "obstacle_0",
+      "kind": "obstacle",
+      "class_name": "obstacle_buoy",
+      "east_m": 19.7,
+      "north_m": -10.99,
+      "radius_m": 0.15,
+      "hue_deg": 62.0,
+      "color": "#ffe15a"
+    },
+    {
+      "id": "obstacle_1",
+      "kind": "obstacle",
+      "class_name": "obstacle_buoy",
+      "east_m": 31.56,
+      "north_m": -4.99,
+      "radius_m": 0.15,
+      "hue_deg": 62.0,
+      "color": "#ffe15a"
+    },
+    {
+      "id": "obstacle_2",
+      "kind": "obstacle",
+      "class_name": "obstacle_buoy",
+      "east_m": 40.11,
+      "north_m": -10.84,
+      "radius_m": 0.15,
+      "hue_deg": 62.0,
+      "color": "#ffe15a"
+    },
+    {
+      "id": "obstacle_3",
+      "kind": "obstacle",
+      "class_name": "obstacle_buoy",
+      "east_m": 49.27,
+      "north_m": -13.3,
+      "radius_m": 0.15,
+      "hue_deg": 62.0,
+      "color": "#ffe15a"
+    },
+    {
+      "id": "obstacle_4",
+      "kind": "obstacle",
+      "class_name": "obstacle_buoy",
+      "east_m": 52.89,
+      "north_m": -0.37,
+      "radius_m": 0.15,
+      "hue_deg": 62.0,
+      "color": "#ffe15a"
+    },
+    {
+      "id": "obstacle_5",
+      "kind": "obstacle",
+      "class_name": "obstacle_buoy",
+      "east_m": 58.74,
+      "north_m": 0.79,
+      "radius_m": 0.15,
+      "hue_deg": 62.0,
+      "color": "#ffe15a"
+    },
+    {
+      "id": "obstacle_6",
+      "kind": "obstacle",
+      "class_name": "obstacle_buoy",
+      "east_m": 77.68,
+      "north_m": -6.53,
+      "radius_m": 0.15,
+      "hue_deg": 62.0,
+      "color": "#ffe15a"
+    },
+    {
+      "id": "obstacle_7",
+      "kind": "obstacle",
+      "class_name": "obstacle_buoy",
+      "east_m": 84.37,
+      "north_m": -8.53,
+      "radius_m": 0.15,
+      "hue_deg": 62.0,
+      "color": "#ffe15a"
+    },
+    {
+      "id": "obstacle_8",
+      "kind": "obstacle",
+      "class_name": "obstacle_buoy",
+      "east_m": 95.54,
+      "north_m": -8.53,
+      "radius_m": 0.15,
+      "hue_deg": 62.0,
+      "color": "#ffe15a"
+    },
+    {
+      "id": "obstacle_9",
+      "kind": "obstacle",
+      "class_name": "obstacle_buoy",
+      "east_m": 103.54,
+      "north_m": -0.98,
+      "radius_m": 0.15,
+      "hue_deg": 62.0,
+      "color": "#ffe15a"
+    },
+    {
+      "id": "obstacle_10",
+      "kind": "obstacle",
+      "class_name": "obstacle_buoy",
+      "east_m": 115.01,
+      "north_m": -0.29,
+      "radius_m": 0.15,
+      "hue_deg": 62.0,
+      "color": "#ffe15a"
+    }
+  ]
+}

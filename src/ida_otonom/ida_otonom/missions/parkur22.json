@@ -12,32 +12,8 @@
   ],
   "route": [
     [
-      0.0,
-      0.0
-    ],
-    [
-      10.0,
-      3.0
-    ],
-    [
-      20.0,
-      6.0
-    ],
-    [
-      30.0,
-      4.0
-    ],
-    [
-      40.0,
-      8.0
-    ],
-    [
-      50.0,
-      5.0
-    ],
-    [
-      60.0,
-      9.0
+      3.3,
+      0.91
     ]
   ],
   "local_waypoints": [
@@ -51,85 +27,85 @@
       "id": "course_left_0",
       "kind": "course_boundary",
       "class_name": "course_buoy",
-      "east_m": 3.787,
-      "north_m": 5.531
+      "east_m": 3.73,
+      "north_m": 5.72
     },
     {
       "id": "course_right_0",
       "kind": "course_boundary",
       "class_name": "course_buoy",
-      "east_m": 6.213,
-      "north_m": -2.531
+      "east_m": 6.27,
+      "north_m": -2.72
     },
     {
       "id": "course_left_1",
       "kind": "course_boundary",
       "class_name": "course_buoy",
-      "east_m": 13.787,
-      "north_m": 8.531
+      "east_m": 13.73,
+      "north_m": 8.72
     },
     {
       "id": "course_right_1",
       "kind": "course_boundary",
       "class_name": "course_buoy",
-      "east_m": 16.213,
-      "north_m": 0.469
+      "east_m": 16.27,
+      "north_m": 0.28
     },
     {
       "id": "course_left_2",
       "kind": "course_boundary",
       "class_name": "course_buoy",
-      "east_m": 23.787,
-      "north_m": 9.031
+      "east_m": 23.73,
+      "north_m": 9.22
     },
     {
       "id": "course_right_2",
       "kind": "course_boundary",
       "class_name": "course_buoy",
-      "east_m": 26.213,
-      "north_m": 0.969
+      "east_m": 26.27,
+      "north_m": 0.78
     },
     {
       "id": "course_left_3",
       "kind": "course_boundary",
       "class_name": "course_buoy",
-      "east_m": 34.178,
-      "north_m": 1.871
+      "east_m": 34.14,
+      "north_m": 1.68
     },
     {
       "id": "course_right_3",
       "kind": "course_boundary",
       "class_name": "course_buoy",
-      "east_m": 35.822,
-      "north_m": 10.129
+      "east_m": 35.86,
+      "north_m": 10.32
     },
     {
       "id": "course_left_4",
       "kind": "course_boundary",
       "class_name": "course_buoy",
-      "east_m": 46.567,
-      "north_m": 2.592
+      "east_m": 46.64,
+      "north_m": 2.41
     },
     {
       "id": "course_right_4",
       "kind": "course_boundary",
       "class_name": "course_buoy",
-      "east_m": 43.433,
-      "north_m": 10.408
+      "east_m": 43.36,
+      "north_m": 10.59
     },
     {
       "id": "course_left_5",
       "kind": "course_boundary",
       "class_name": "course_buoy",
-      "east_m": 55.687,
-      "north_m": 2.847
+      "east_m": 55.72,
+      "north_m": 2.65
     },
     {
       "id": "course_right_5",
       "kind": "course_boundary",
       "class_name": "course_buoy",
-      "east_m": 54.313,
-      "north_m": 11.153
+      "east_m": 54.28,
+      "north_m": 11.35
     }
   ],
   "obstacles": [

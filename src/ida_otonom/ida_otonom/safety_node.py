@@ -65,7 +65,7 @@ class SafetyNode(Node):
     def kill_reset_cb(self, msg: Bool) -> None:
         if msg.data:
             if self.block_reset_on_physical_kill and self.physical_kill_active:
-                self.get_logger().warn(
+                self.get_logger().warning(
                     "Kill reset ignored while physical/remote kill is active"
                 )
                 return

@@ -360,12 +360,12 @@ class MissionManagerNode(Node):
         if not msg.data:
             return
         if not self.mission_loaded:
-            self.get_logger().warn(
+            self.get_logger().warning(
                 "Mission start ignored: mission is not loaded"
             )
             return
         if self.mission_completed:
-            self.get_logger().warn(
+            self.get_logger().warning(
                 "Mission start ignored: mission is already completed"
             )
             return
@@ -434,7 +434,7 @@ class MissionManagerNode(Node):
         if accepted:
             self.get_logger().info(f"Mission load accepted: {reason}")
         else:
-            self.get_logger().warn(f"Mission load rejected: {reason}")
+            self.get_logger().warning(f"Mission load rejected: {reason}")
 
     def loop(self) -> None:
         # Waypointleri publish et (değişiklik varsa)

@@ -33,6 +33,7 @@ class LoggerNode(Node):
         self.target_distance = None
         self.speed_setpoint = 0.0
         self.yaw_rate_setpoint = 0.0
+        self.planner_status = {}
 
         self.file = open(self.csv_path, "w", newline="", encoding="utf-8")
         self.writer = csv.writer(self.file)
@@ -49,6 +50,16 @@ class LoggerNode(Node):
                 "target_distance_m",
                 "speed_setpoint",
                 "yaw_rate_setpoint",
+                "planner_mode",
+                "planner_reason",
+                "lidar_state",
+                "front_clearance_m",
+                "corridor_center_left_m",
+                "obstacle_id",
+                "obstacle_forward_m",
+                "obstacle_left_m",
+                "pass_side",
+                "target_left_m",
             ]
         )
 
@@ -94,6 +105,12 @@ class LoggerNode(Node):
             self.setpoints_cb,
             10,
         )
+        self.create_subscription(
+            String,
+            "/planner/status",
+            self.planner_status_cb,
+            10,
+        )
 
         self.timer = self.create_timer(1.0, self.loop)
 
@@ -135,6 +152,12 @@ class LoggerNode(Node):
         self.speed_setpoint = float(data.get("speed_setpoint", 0.0))
         self.yaw_rate_setpoint = float(data.get("yaw_rate_setpoint", 0.0))
 
+    def planner_status_cb(self, msg: String) -> None:
+        try:
+            self.planner_status = from_json(msg.data)
+        except Exception:
+            self.planner_status = {}
+
     def loop(self) -> None:
         self.writer.writerow(
             [
@@ -149,6 +172,16 @@ class LoggerNode(Node):
                 self.target_distance,
                 self.speed_setpoint,
                 self.yaw_rate_setpoint,
+                self.planner_status.get("mode"),
+                self.planner_status.get("reason"),
+                self.planner_status.get("lidar_state"),
+                self.planner_status.get("front_clearance_m"),
+                self.planner_status.get("corridor_center_left_m"),
+                self.planner_status.get("obstacle_id"),
+                self.planner_status.get("obstacle_forward_m"),
+                self.planner_status.get("obstacle_left_m"),
+                self.planner_status.get("pass_side"),
+                self.planner_status.get("target_left_m"),
             ]
         )
         self.file.flush()

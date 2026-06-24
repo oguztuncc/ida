@@ -83,7 +83,10 @@ def default_mission_file() -> str:
 
 def resolve_mission_file(configured_path: str) -> Path:
     if configured_path:
-        return Path(configured_path).expanduser()
+        path = Path(configured_path).expanduser()
+        if path.is_absolute() or path.exists():
+            return path
+        return package_share_path() / "missions" / path
 
     return Path(default_mission_file())
 

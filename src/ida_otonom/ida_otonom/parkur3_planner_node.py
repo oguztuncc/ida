@@ -180,7 +180,7 @@ class Parkur3PlannerNode(Node):
     def _force_search(self) -> None:
         """Manuel olarak SEARCH moduna geç."""
         if self.require_color_first and not self.target_color:
-            self.get_logger().warn("SEARCH ignored: target color is not set")
+            self.get_logger().warning("SEARCH ignored: target color is not set")
             return
         if self.mode == "WAIT_COLOR":
             self.get_logger().info("Force SEARCH mode")
@@ -215,7 +215,7 @@ class Parkur3PlannerNode(Node):
         cmd = msg.data.strip().lower()
         if cmd == "start" and self.mode == "WAIT_COLOR":
             if self.require_color_first and not self.target_color:
-                self.get_logger().warn("Command start ignored: no target color")
+                self.get_logger().warning("Command start ignored: no target color")
                 return
             self.get_logger().info("Command: start -> SEARCH")
             self._set_mode("SEARCH")
@@ -415,7 +415,7 @@ class Parkur3PlannerNode(Node):
             # Hedef kayboldu mu?
             if self.target_buoy is None:
                 if now - self.buoy_ts > self.sensor_timeout_s:
-                    self.get_logger().warn("Target lost, returning to SEARCH")
+                    self.get_logger().warning("Target lost, returning to SEARCH")
                     self._set_mode("SEARCH")
                     return
 

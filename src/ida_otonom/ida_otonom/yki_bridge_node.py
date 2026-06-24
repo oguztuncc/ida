@@ -254,7 +254,7 @@ class YkiBridgeNode(Node):
                 getattr(mav, "MAV_MISSION_DENIED", 14),
                 mission_type,
             )
-            self.get_logger().warn(
+            self.get_logger().warning(
                 "MAVLink mission upload rejected after mission start"
             )
             return
@@ -267,7 +267,7 @@ class YkiBridgeNode(Node):
                 getattr(mav, "MAV_MISSION_INVALID_SEQUENCE", 13),
                 mission_type,
             )
-            self.get_logger().warn(
+            self.get_logger().warning(
                 f"MAVLink mission upload rejected: invalid count {count}"
             )
             return
@@ -313,7 +313,7 @@ class YkiBridgeNode(Node):
                 mission_type,
             )
             self.mission_upload = None
-            self.get_logger().warn(
+            self.get_logger().warning(
                 f"MAVLink mission upload rejected: expected seq "
                 f"{expected_seq}, got {seq}"
             )
@@ -329,7 +329,7 @@ class YkiBridgeNode(Node):
                 mission_type,
             )
             self.mission_upload = None
-            self.get_logger().warn(f"MAVLink mission item rejected: {exc}")
+            self.get_logger().warning(f"MAVLink mission item rejected: {exc}")
             return
 
         self.mission_upload["items"][seq] = waypoint
@@ -576,7 +576,7 @@ class YkiBridgeNode(Node):
         try:
             self.mavlink.mav.command_ack_send(command, result)
         except Exception as exc:
-            self.get_logger().warn(f"MAVLink command ack failed: {exc}")
+            self.get_logger().warning(f"MAVLink command ack failed: {exc}")
 
     def _handle_mavlink_text_command(self, msg) -> None:
         text = msg.text
@@ -616,18 +616,18 @@ class YkiBridgeNode(Node):
             if active:
                 self._publish_yki_kill()
             else:
-                self.get_logger().warn(
+                self.get_logger().warning(
                     "YKI kill clear ignored; YKI may only activate kill"
                 )
             return
 
-        self.get_logger().warn(
+        self.get_logger().warning(
             f"YKI command ignored; only kill activation is allowed: {command_name}"
         )
 
     def _publish_yki_kill(self) -> None:
         self.kill_pub.publish(Bool(data=True))
-        self.get_logger().warn("YKI kill command accepted")
+        self.get_logger().warning("YKI kill command accepted")
 
     def _is_active_kill_value(self, value: Any) -> bool:
         if isinstance(value, str):

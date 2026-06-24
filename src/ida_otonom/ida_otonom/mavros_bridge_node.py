@@ -94,7 +94,7 @@ class MavrosBridgeNode(Node):
         timer_period = 1.0 / max(publish_rate_hz, 1.0)
         self.timer = self.create_timer(timer_period, self.loop)
 
-        self.get_logger().warn(
+        self.get_logger().warning(
             "MAVROS bridge starts disabled by default. Set enabled:=true only "
             "after Pixhawk failsafe, kill chain, mode, and topic mapping "
             "are verified."

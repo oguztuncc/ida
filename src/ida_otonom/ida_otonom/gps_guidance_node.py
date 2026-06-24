@@ -121,7 +121,7 @@ class GpsGuidanceNode(Node):
                     f"Updated waypoints from mission_manager: {len(self.waypoints)} waypoint(s)"
                 )
         except Exception as exc:
-            self.get_logger().warn(f"Ignoring invalid waypoint message: {exc}")
+            self.get_logger().warning(f"Ignoring invalid waypoint message: {exc}")
 
     def started_cb(self, msg: Bool) -> None:
         self.mission_started = bool(msg.data)
@@ -135,10 +135,10 @@ class GpsGuidanceNode(Node):
         if self.current_lat is None or self.current_lon is None:
             return
         if not self.waypoints:
-            self.get_logger().warn("No waypoints available")
+            self.get_logger().warning("No waypoints available")
             return
         if self.active_waypoint_index >= len(self.waypoints):
-            self.get_logger().warn(
+            self.get_logger().warning(
                 f"Waypoint index {self.active_waypoint_index} out of range "
                 f"({len(self.waypoints)} waypoints)"
             )

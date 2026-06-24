@@ -275,10 +275,8 @@ class SimVisualizerNode(Node):
             self.waypoints = [
                 (float(wp["lat"]), float(wp["lon"])) for wp in waypoints
             ]
-            if self.waypoints:
-                self.origin_lat, self.origin_lon = self.waypoints[0]
         except Exception as exc:
-            self.get_logger().warn(f"Ignoring invalid waypoint message: {exc}")
+            self.get_logger().warning(f"Ignoring invalid waypoint message: {exc}")
 
     def mission_status_cb(self, msg: String) -> None:
         self.mission_status = self._parse_json(msg.data)
@@ -493,7 +491,7 @@ class SimVisualizerNode(Node):
                 continue
             east, north = self._project(float(obj["lat"]), float(obj["lon"]))
             x, y = to_screen(east, north)
-            radius_m = float(obj.get("radius_m", 0.4))
+            radius_m = float(obj.get("radius_m", 0.15))
             rx, _ = to_screen(east + radius_m, north)
             radius_px = max(5.0, abs(rx - x))
             kind = str(obj.get("kind", ""))

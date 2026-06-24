@@ -180,7 +180,7 @@ class SensorCrossValidatorNode(Node):
         try:
             payload = from_json(msg.data)
         except Exception as exc:
-            self.get_logger().warn(f"Ignoring invalid detection payload: {exc}")
+            self.get_logger().warning(f"Ignoring invalid detection payload: {exc}")
             return
 
         detections = [
